@@ -1,0 +1,50 @@
+[
+  {
+    "id": "bed-double-a",
+    "name": "双人床",
+    "thumbnail": "/thumbnails/kaykit/bed-double-a.png",
+    "modelUrl": "/models/kaykit/bed_double_A.gltf",
+    "meshCount": 1,
+    "defaultScale": { "x": 1, "y": 1, "z": 1 }
+  },
+  {
+    "id": "chair-a",
+    "name": "椅子",
+    "thumbnail": "/thumbnails/kaykit/chair-a.png",
+    "modelUrl": "/models/kaykit/chair_A.gltf",
+    "meshCount": 1,
+    "defaultScale": { "x": 1, "y": 1, "z": 1 }
+  },
+  {
+    "id": "couch",
+    "name": "沙发",
+    "thumbnail": "/thumbnails/kaykit/couch.png",
+    "modelUrl": "/models/kaykit/couch.gltf",
+    "meshCount": 1,
+    "defaultScale": { "x": 1, "y": 1, "z": 1 }
+  },
+  {
+    "id": "table-medium",
+    "name": "餐桌",
+    "thumbnail": "/thumbnails/kaykit/table-medium.png",
+    "modelUrl": "/models/kaykit/table_medium.gltf",
+    "meshCount": 1,
+    "defaultScale": { "x": 1, "y": 1, "z": 1 }
+  },
+  {
+    "id": "cabinet-medium",
+    "name": "柜子",
+    "thumbnail": "/thumbnails/kaykit/cabinet-medium.png",
+    "modelUrl": "/models/kaykit/cabinet_medium.gltf",
+    "meshCount": 1,
+    "defaultScale": { "x": 1, "y": 1, "z": 1 }
+  },
+  {
+    "id": "lamp-standing",
+    "name": "落地灯",
+    "thumbnail": "/thumbnails/kaykit/lamp-standing.png",
+    "modelUrl": "/models/kaykit/lamp_standing.gltf",
+    "meshCount": 1,
+    "defaultScale": { "x": 1, "y": 1, "z": 1 }
+  }
+]

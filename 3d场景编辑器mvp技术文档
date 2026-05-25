@@ -1,0 +1,595 @@
+# 3D 场景编辑器 MVP 技术文档（P0）
+
+> 版本：v0.1  
+> 范围：P0 最小可用版本  
+> 技术栈：React + Vite + TypeScript + React Three Fiber + Drei + Zustand + IndexedDB
+
+---
+
+## 1. 项目概述
+
+### 1.1 目标
+
+构建一个 Web 端 3D 场景编辑器 MVP，支持从左侧模型库选取模型、在中间编辑区放置与编辑、在右侧查看/修改属性，并将方案持久化到浏览器 IndexedDB。
+
+### 1.2 P0 功能边界
+
+| 功能 | P0 是否包含 | 说明 |
+|------|-------------|------|
+| 三栏布局（模型列表 / 3D 编辑 / 属性） | ✅ | 固定布局，暂不做响应式适配 |
+| 点击放置模型 | ✅ | 左选模型 → 编辑区点击落点放置 |
+| 模型选中 / 取消选中 | ✅ | 单击选中，点击空白取消 |
+| 模型变换（移动/旋转/缩放） | ✅ | TransformControls Gizmo |
+| 场景属性面板 | ✅ | 未选中时展示 |
+| 模型属性面板 | ✅ | 选中单个或多个同类型对象时展示 |
+| 俯视图（属性区上方） | ✅ | 2D 顶视示意，只读导航 |
+| 保存到 IndexedDB | ✅ | 手动保存 + 可选自动保存 |
+| 撤销 / 重做 | ✅ | 命令栈，覆盖放置/变换/组合/清空等 |
+| 模型组合 / 解组 | ✅ | 多选后组合为 Group |
+| 清空画布 | ✅ | 二次确认后清空场景实体 |
+| 画墙 / 硬装 / 渲染 / 云同步 | ❌ | 后续版本 |
+
+---
+
+## 2. 界面模块设计
+
+### 2.1 整体布局
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  TopBar：保存 | 撤销 | 重做 | 组合 | 解组 | 清空                        │
+├──────────┬─────────────────────────────────────────┬─────────────────┤
+│          │                                         │  ┌───────────┐  │
+│  Model   │                                         │  │ 俯视图     │  │
+│  Panel   │         SceneViewport (R3F Canvas)      │  │ TopView   │  │
+│  240px   │                                         │  └───────────┘  │
+│          │                                         │  PropertyPanel  │
+│          │                                         │  280px          │
+└──────────┴─────────────────────────────────────────┴─────────────────┘
+```
+
+### 2.2 模块说明
+
+#### 2.2.1 顶部工具栏（TopBar）
+
+| 按钮 | 行为 |
+|------|------|
+| 保存 | 将当前场景序列化写入 IndexedDB |
+| 撤销 | `history.undo()` |
+| 重做 | `history.redo()` |
+| 组合 | 当前多选 ≥2 个顶层对象时可用，创建 Group |
+| 解组 | 选中 Group 时可用，子对象还原为顶层 |
+| 清空 | Modal 确认后移除所有场景实体（保留相机/灯光等环境） |
+
+快捷键（P0 可选）：`Ctrl/Cmd+Z` 撤销，`Ctrl/Cmd+Shift+Z` 重做，`Delete` 删除选中对象。
+
+#### 2.2.2 左侧 — 模型列表面板（ModelPanel）
+
+**职责**：展示可用模型资产，进入「放置模式」。
+
+**交互流程**：
+
+1. 用户点击某个模型卡片 → 进入 **PlacementMode**（放置模式）
+2. 鼠标移入编辑区 → 显示预览 Ghost（半透明模型 + 地面吸附）
+3. 用户在编辑区 **单击** → 在点击位置（射线与地面 y=0 交点）创建实例
+4. 放置成功后退出放置模式（P0 默认单次放置；可配置连续放置）
+
+**数据**：P0 使用本地静态 `assets/manifest.json` 描述模型列表（id、名称、缩略图、glb 路径、默认尺寸）。
+
+#### 2.2.3 中间 — 3D 场景编辑区（SceneViewport）
+
+**职责**：Three.js 渲染、相机控制、射线拾取、变换编辑。
+
+**内置环境（P0）**：
+
+- 透视相机 + `OrbitControls`（Drei）
+- 方向光 + 环境光（`Environment` preset 或简单 HemisphereLight）
+- 地面 Grid + 可选无限地面（`Grid` + `mesh` 接收阴影）
+- 选中高亮：Outline 或 emissive 变色（P0 二选一）
+
+**交互**：
+
+| 操作 | 行为 |
+|------|------|
+| 左键点击空白 | 取消选中 |
+| 左键点击物体 | 选中（Shift 追加多选） |
+| 放置模式下左键 | 放置模型 |
+| 拖拽 Gizmo | 更新 transform，松手后入栈 |
+| 滚轮 | 缩放视距（OrbitControls） |
+| 右键拖拽 | 旋转视角 |
+| 中键/Alt+左键 | 平移视角 |
+
+#### 2.2.4 右侧 — 属性区（PropertyPanel + TopView）
+
+**上部：俯视图 TopView**
+
+- 独立小 Canvas 或 SVG，Y 轴顶视投影
+- 绘制：地面范围、所有实体包围盒/轮廓、当前选中高亮
+- 点击俯视图中的物体 → 同步选中到 3D 场景（P0 可选，建议实现）
+- 显示相机观察方向指示（小箭头）
+
+**下部：属性表单**
+
+**未选中（场景属性）**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| 场景名称 | string | 方案名 |
+| 背景色 | color | 场景 clearColor |
+| 网格显示 | boolean | Grid 显隐 |
+| 网格间距 | number | Grid cellSize |
+| 环境光强度 | number | 0~2 |
+| 物体数量 | readonly | 统计顶层 + 组内实体 |
+
+**选中单个模型（模型属性）**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| 名称 | string | 可编辑 displayName |
+| 模型 ID | readonly | 关联 assetId |
+| 位置 X/Y/Z | number | 米，修改后同步 Transform |
+| 旋转 X/Y/Z | number | 度 |
+| 缩放 X/Y/Z | number |  uniform 或非 uniform |
+| 锁定 | boolean | 锁定后不可 Gizmo 编辑 |
+
+**选中多个对象**：显示批量信息（数量、公共位置/旋转/缩放批量偏移 P0 可只做只读 + 删除）。
+
+**选中 Group**：显示组名称 + 解组按钮；子对象列表只读。
+
+---
+
+## 3. 技术栈
+
+### 3.1 核心依赖
+
+```json
+{
+  "dependencies": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "three": "^0.170.0",
+    "@react-three/fiber": "^8.17.0",
+    "@react-three/drei": "^9.117.0",
+    "zustand": "^5.0.0",
+    "idb-keyval": "^6.2.0",
+    "uuid": "^11.0.0",
+    "immer": "^10.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.170.0"
+  }
+}
+```
+
+### 3.2 选型说明
+
+| 技术 | 用途 |
+|------|------|
+| **Vite** | 快速 dev/build，原生 ESM |
+| **React Three Fiber** | 声明式 Three.js 场景图 |
+| **Drei** | OrbitControls、TransformControls、useGLTF、Grid、Environment |
+| **Zustand** | 轻量全局状态，配合 immer 做不可变更新 |
+| **idb-keyval** | IndexedDB 极简封装（基于 localforage 亦可） |
+| **uuid** | 场景实体唯一 id |
+
+---
+
+## 4. 架构设计
+
+### 4.1 分层结构
+
+```
+src/
+├── app/                    # 入口、布局
+│   ├── App.tsx
+│   └── layout/
+│       ├── EditorLayout.tsx
+│       ├── TopBar.tsx
+│       ├── ModelPanel.tsx
+│       ├── PropertyPanel.tsx
+│       └── TopView.tsx
+├── features/
+│   ├── scene/              # R3F 场景
+│   │   ├── SceneViewport.tsx
+│   │   ├── SceneContent.tsx
+│   │   ├── SceneObject.tsx
+│   │   ├── PlacementPreview.tsx
+│   │   └── TransformGizmo.tsx
+│   ├── assets/             # 模型清单与加载
+│   └── history/            # 撤销重做命令
+├── stores/
+│   ├── sceneStore.ts       # 场景实体、选中、放置模式
+│   ├── editorStore.ts      # UI 状态、工具模式
+│   └── historyStore.ts     # undo/redo 栈
+├── lib/
+│   ├── persistence/        # IndexedDB
+│   ├── commands/           # Command 模式实现
+│   └── math/               # 射线、吸附
+├── types/
+│   └── scene.ts
+└── assets/
+    └── manifest.json
+```
+
+### 4.2 数据流
+
+```mermaid
+flowchart LR
+  ModelPanel -->|setPlacementAsset| sceneStore
+  SceneViewport -->|pick / transform| sceneStore
+  sceneStore -->|subscribe| PropertyPanel
+  sceneStore -->|subscribe| TopView
+  TopBar -->|save| persistence
+  persistence -->|load| sceneStore
+  sceneStore -->|dispatch| historyStore
+  historyStore -->|apply inverse| sceneStore
+```
+
+**原则**：
+
+- **场景真源（Single Source of Truth）**：`sceneStore.entities` 为唯一数据源，R3F 仅负责渲染与回传交互事件。
+- **命令栈与状态分离**：可变更操作封装为 `Command`，执行时改 store 并压栈；undo 执行 `inverse()`。
+- **React 外避免频繁 re-render**：R3F 内用 `useFrame` 做预览跟随；仅在实体增删改时更新 store。
+
+---
+
+## 5. 数据模型
+
+### 5.1 类型定义
+
+```typescript
+// types/scene.ts
+
+export type Vec3 = { x: number; y: number; z: number };
+
+export interface Transform {
+  position: Vec3;
+  rotation: Vec3; // 欧拉角，度
+  scale: Vec3;
+}
+
+export interface SceneEntity {
+  id: string;
+  type: 'model' | 'group';
+  name: string;
+  transform: Transform;
+  locked?: boolean;
+  visible?: boolean;
+  // type === 'model'
+  assetId?: string;
+  // type === 'group'
+  children?: string[]; // 子实体 id 列表
+}
+
+export interface SceneSettings {
+  name: string;
+  backgroundColor: string;
+  gridVisible: boolean;
+  gridSize: number;
+  ambientIntensity: number;
+}
+
+export interface SceneDocument {
+  version: 1;
+  id: string;
+  settings: SceneSettings;
+  entities: Record<string, SceneEntity>;
+  rootIds: string[]; // 顶层实体顺序
+  updatedAt: number;
+}
+
+export interface AssetManifestItem {
+  id: string;
+  name: string;
+  thumbnail: string;
+  modelUrl: string; // public/models/xxx.glb
+  defaultScale?: Vec3;
+}
+```
+
+### 5.2 坐标系约定
+
+- 单位：**米（m）**，UI 展示可换算为 mm（×1000）后续再做。
+- 轴向：**Y 轴向上**（Three.js 默认）。
+- 放置默认：模型底部贴地（y = 0），通过 `Box3` 计算 model offset 或使用资产 manifest 中的 `groundOffset`。
+
+### 5.3 组合 / 解组规则
+
+**组合（Group）**：
+
+1. 选中 ≥2 个 **顶层** 实体（不可含 nested group 的子项直接组合，P0 简化：仅顶层）
+2. 计算各对象世界包围盒中心作为 Group 原点
+3. 子对象 transform 转为 **相对 Group 的 local transform**
+4. 新建 `SceneEntity { type: 'group', children: [...] }`
+5. 从 `rootIds` 移除子 id，追加 group id
+
+**解组**：
+
+1. 选中 Group
+2. 将每个 child 的 local transform 转换为世界 transform 写回
+3. child id 加回 `rootIds`，删除 group 实体
+
+---
+
+## 6. 状态管理（Zustand）
+
+### 6.1 sceneStore
+
+```typescript
+interface SceneState {
+  document: SceneDocument;
+  selectedIds: string[];
+  placementAssetId: string | null;
+
+  // actions
+  setPlacementAsset: (assetId: string | null) => void;
+  addModel: (assetId: string, position: Vec3) => void;
+  updateTransform: (id: string, transform: Partial<Transform>) => void;
+  updateEntity: (id: string, patch: Partial<SceneEntity>) => void;
+  updateSettings: (patch: Partial<SceneSettings>) => void;
+  setSelection: (ids: string[]) => void;
+  removeSelected: () => void;
+  groupSelected: () => void;
+  ungroupSelected: () => void;
+  clearScene: () => void;
+  loadDocument: (doc: SceneDocument) => void;
+  getEntityWorldTransform: (id: string) => Transform;
+}
+```
+
+### 6.2 historyStore
+
+```typescript
+interface HistoryState {
+  past: Command[];
+  future: Command[];
+  execute: (cmd: Command) => void;
+  undo: () => void;
+  redo: () => void;
+  clear: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+```
+
+### 6.3 Command 接口
+
+```typescript
+interface Command {
+  name: string;
+  execute: () => void;
+  undo: () => void;
+}
+```
+
+**P0 需实现的 Command**：
+
+| Command | 触发场景 |
+|---------|----------|
+| `AddEntityCommand` | 放置模型 |
+| `RemoveEntitiesCommand` | 删除 |
+| `UpdateTransformCommand` | Gizmo 拖拽结束 |
+| `UpdateEntityCommand` | 属性面板改字段 |
+| `GroupCommand` / `UngroupCommand` | 组合/解组 |
+| `UpdateSettingsCommand` | 场景属性变更 |
+| `ClearSceneCommand` | 清空 |
+| `LoadDocumentCommand` | 加载方案（可选，undo 栈清空） |
+
+**实现要点**：`execute` 与 `undo` 必须对称；Transform 拖拽只在 **pointerup** 时入栈一次，避免每一帧一条历史。
+
+---
+
+## 7. 核心交互实现
+
+### 7.1 点击放置模型
+
+```
+1. ModelPanel 点击 → placementAssetId = asset.id
+2. SceneViewport 监听 pointermove：
+   - 射线检测 groundPlane → previewPosition
+   - PlacementPreview 跟随（半透明 glb 实例）
+3. pointerdown + placementAssetId 存在：
+   - 射线求交点 P
+   - history.execute(new AddEntityCommand(assetId, P))
+   - placementAssetId = null（单次模式）
+```
+
+**地面平面**：`new Plane(new Vector3(0, 1, 0), 0)` 或使用 invisible mesh `raycast`。
+
+**吸附（P0 可选）**：gridSize 整数倍吸附 `snap(p, gridSize)`。
+
+### 7.2 选中与 TransformControls
+
+- 使用 Drei `<TransformControls>` 绑定选中对象（单选时显示 Gizmo）
+- 多选 P0：不显示 Gizmo，仅属性区展示；或显示包围盒中心统一移动（P1）
+- `onMouseDown` 禁用 OrbitControls，`onMouseUp` 恢复
+- Transform 结束触发 `UpdateTransformCommand`（保存 old/new transform）
+
+### 7.3 模型加载
+
+- `useGLTF(modelUrl)` + `preload` 预加载 manifest 全部模型
+- 每个 `SceneObject` 根据 `assetId` 克隆 gltf.scene（`SkeletonUtils.clone` 或 `scene.clone()`）
+- 用 `userData.entityId` 关联 store 实体
+
+### 7.4 俯视图 TopView
+
+**P0 方案（推荐 SVG）**：
+
+- 遍历 `rootIds`，递归展开 group
+- 世界坐标 (x, z) 映射到 SVG viewBox
+- 选中 id 描边高亮
+- 不单独跑 Three Renderer，降低复杂度
+
+**映射公式**：
+
+```
+svgX = (worldX - centerX) * scale + svgWidth/2
+svgY = (worldZ - centerZ) * scale + svgHeight/2
+```
+
+---
+
+## 8. 持久化（IndexedDB）
+
+### 8.1 存储键
+
+```typescript
+const DB_KEY_CURRENT = 'scene-editor:current';
+const DB_KEY_RECENT = 'scene-editor:recent'; // 最近方案列表 meta
+```
+
+### 8.2 保存 / 加载
+
+```typescript
+import { get, set } from 'idb-keyval';
+
+async function saveScene(doc: SceneDocument) {
+  doc.updatedAt = Date.now();
+  await set(DB_KEY_CURRENT, doc);
+}
+
+async function loadScene(): Promise<SceneDocument | null> {
+  return (await get(DB_KEY_CURRENT)) ?? null;
+}
+```
+
+### 8.3 启动流程
+
+1. App mount → `loadScene()`
+2. 有数据 → `sceneStore.loadDocument(doc)`
+3. 无数据 → 初始化空 `SceneDocument`（默认 settings）
+4. TopBar「保存」→ 序列化当前 document 写入 IndexedDB
+5. （可选）debounce 3s 自动保存
+
+### 8.4 版本迁移
+
+`SceneDocument.version` 字段预留；P0 仅 `version: 1`，无迁移逻辑。
+
+---
+
+## 9. 组件清单（P0）
+
+| 组件 | 职责 |
+|------|------|
+| `EditorLayout` | 三栏 + TopBar 布局 |
+| `TopBar` | 工具按钮、快捷键 |
+| `ModelPanel` | manifest 列表、搜索（P0 可本地 filter） |
+| `SceneViewport` | R3F Canvas 容器 |
+| `SceneContent` | 灯光、Grid、实体列表、交互逻辑 |
+| `SceneObject` | 单个 model/group 渲染 |
+| `PlacementPreview` | 放置 ghost |
+| `TransformGizmo` | TransformControls 封装 |
+| `PropertyPanel` | 场景/模型表单 |
+| `TopView` | SVG 俯视导航 |
+| `ConfirmDialog` | 清空确认 |
+
+---
+
+## 10. 初始化与目录脚手架
+
+### 10.1 创建项目
+
+```bash
+npm create vite@latest 3d-scene-editor -- --template react-ts
+cd 3d-scene-editor
+npm install three @react-three/fiber @react-three/drei zustand idb-keyval uuid immer
+npm install -D @types/three
+```
+
+### 10.2 public 资源
+
+```
+public/
+├── models/           # glb 模型文件
+│   ├── bed-01.glb
+│   └── chair-01.glb
+└── thumbnails/
+    ├── bed-01.png
+    └── chair-01.png
+```
+
+### 10.3 manifest 示例
+
+```json
+[
+  {
+    "id": "bed-01",
+    "name": "双人床",
+    "thumbnail": "/thumbnails/bed-01.png",
+    "modelUrl": "/models/bed-01.glb",
+    "defaultScale": { "x": 1, "y": 1, "z": 1 }
+  }
+]
+```
+
+---
+
+## 11. 实施计划
+
+| 阶段 | 任务 | 预估 |
+|------|------|------|
+| **S1** | Vite 脚手架、EditorLayout 三栏、空 Canvas | 0.5d |
+| **S2** | sceneStore + SceneDocument 类型、Grid/灯光/OrbitControls | 0.5d |
+| **S3** | ModelPanel + manifest + GLTF 加载 + 点击放置 | 1d |
+| **S4** | 选中、TransformControls、属性面板双向绑定 | 1d |
+| **S5** | Command + undo/redo | 1d |
+| **S6** | Group/Ungroup、删除、清空 | 0.5d |
+| **S7** | IndexedDB 保存/加载 | 0.5d |
+| **S8** | TopView 俯视图 + 联调 polish | 0.5d |
+
+**合计**：约 **5.5 人日**（单人）。
+
+---
+
+## 12. 验收标准
+
+- [ ] 左侧点击模型后，编辑区点击可放置，模型正确贴地显示
+- [ ] 可选中、拖拽 Gizmo 移动/旋转/缩放，属性面板数值同步
+- [ ] 未选中时右侧为场景属性，选中时为模型属性
+- [ ] 属性区上方俯视图能反映物体平面位置与选中态
+- [ ] 撤销/重做覆盖放置、变换、组合、解组、清空、属性修改
+- [ ] 多选 ≥2 可组合，选中组可解组且 world transform 正确
+- [ ] 清空需确认且可撤销
+- [ ] 保存后刷新页面，场景可从 IndexedDB 恢复
+
+---
+
+## 13. 风险与 P1 预留
+
+| 项 | 说明 |
+|----|------|
+| 大模型性能 | P0 控制单场景 <50 实例；GLB 使用 Draco 压缩 |
+| Group 嵌套 | P0 仅一层 group，不支持组内再组合 |
+| 多选 Gizmo | P0 不做，P1 用包围盒统一变换 |
+| 连续放置 | 配置项 `placementMode: 'single' \| 'continuous'` |
+| 后端同步 | P1 REST API + 用户体系，IndexedDB 作离线缓存 |
+
+---
+
+## 14. 附录：空场景初始 Document
+
+```typescript
+const createEmptyDocument = (): SceneDocument => ({
+  version: 1,
+  id: crypto.randomUUID(),
+  settings: {
+    name: '未命名场景',
+    backgroundColor: '#1a1a1a',
+    gridVisible: true,
+    gridSize: 1,
+    ambientIntensity: 0.6,
+  },
+  entities: {},
+  rootIds: [],
+  updatedAt: Date.now(),
+});
+```
+
+---
+
+*文档结束 — 下一步可据此初始化 Vite 工程并实现 S1~S2。*

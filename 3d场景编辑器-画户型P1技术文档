@@ -1,0 +1,640 @@
+# 3D 场景编辑器 — 画户型 P1 技术文档
+
+> 版本：v0.1（P1）  
+> 前置：已完成 [P0 技术文档](./3d场景编辑器mvp技术文档)（家具放置、变换、组合、持久化）  
+> 参考：酷家乐 5.0「画户型」模式（录屏 `录屏2026-05-25 10.50.58.mov` + 官方帮助中心）  
+> 技术栈延续：React + Vite + TypeScript + R3F + Drei + Zustand + IndexedDB
+
+---
+
+## 1. 项目概述
+
+### 1.1 目标
+
+在 P0 家具场景编辑器基础上，新增 **2D 画户型** 能力：用户可绘制墙体、自动生成房间，并在墙上放置门/窗；2D 户型数据实时驱动 3D 墙体挤出显示，与既有家具摆放共用同一方案文档。
+
+### 1.2 与酷家乐的对照（录屏 + 官方文档提炼）
+
+录屏（约 34s）展示的是酷家乐 5.0 **画户型** 主界面，核心结构如下：
+
+| 区域 | 酷家乐内容 | P1 是否模仿 |
+|------|------------|-------------|
+| 左侧「画户型」面板 | 导入户型、画房间（直墙 B / 矩形墙 F / 弧墙 H）、放门窗、加结构 | 部分：直墙、矩形墙、门/窗/门洞；不含导入、弧墙、结构件 |
+| 中央 2D 画布 | 网格、墙体线段、尺寸标注、正交绘制 | ✅ 主编辑区 |
+| 右侧参数面板 | 绘制墙：定位线、正交、高度、围成房间、厚度、承重、自动连接 | ✅ 精简版参数 |
+| 顶部工具栏 | 保存、撤销、重做、清空 | ✅ 复用现有 TopBar |
+| 底部栏 | 2D/3D 切换、楼层、吸附、缩放 | 部分：2D/3D 模式切换、网格吸附 |
+| 视图互斥 | 2D 主画布时，角落显示 3D 预览（反之亦然） | ✅ 右侧 TopView 升级为可编辑 2D 户型画布 |
+
+官方交互要点（[墙体绘制入门](https://www.kujiale.com/hc/article/3FO4K4VOEVCY)、[画户型操作介绍](https://www.kujiale.com/hc/article/3FO4K4VLNOA7)）：
+
+1. **画框架**：大轮廓用矩形墙，内部分隔用直墙；顺时针用墙内线、逆时针用墙外线定位外轮廓。
+2. **直墙**：两点点击绘制；绘制中 `Shift` 正交；`空格` 切换墙中线/内线/外线；绘制时可输入长度数值。
+3. **矩形墙**：对角拖拽生成四面墙。
+4. **墙体编辑**：选中墙改厚度/高度/角度；拖端点改长度；端点 `Shift` 锁定角度。
+5. **房间**：墙体闭合后自动生成房间（面积、名称可后改）。
+6. **门窗**：先选门窗类型，再点击墙体放置；右侧改宽高与沿墙偏移；门洞必须依附墙体。
+7. **连接**：墙端点自动吸附连接（斜接/平接 P2 再做）。
+
+### 1.3 P1 功能边界
+
+| 功能 | P1 | 说明 |
+|------|-----|------|
+| 编辑模式切换（画户型 / 摆家具） | ✅ | TopBar 或 Tab 切换，互斥工具状态 |
+| 直墙绘制（两点式） | ✅ | 快捷键 `B` |
+| 矩形墙（房间） | ✅ | 快捷键 `F` |
+| 墙中线/内线/外线定位 | ✅ | 空格循环 + 右侧面板 |
+| 正交绘制、网格吸附 | ✅ | `Shift` 临时正交；沿用 `snapToGrid` |
+| 绘制时长度数值输入 | ✅ | 墙段旁浮动输入框（mm） |
+| 墙体选中、拖端点改长度 | ✅ | |
+| 墙体属性（厚度、高度、承重） | ✅ | 默认厚 240mm、高 2800mm |
+| 墙端点自动连接 | ✅ | 阈值吸附合并端点 |
+| 闭合检测 → 自动生成房间 | ✅ | 最小环检测 |
+| 门 / 窗 / 门洞放置 | ✅ | 点击墙体；2D 符号 + 3D 洞口 |
+| 2D 户型主编辑 + 3D 预览联动 | ✅ | 中间 3D 挤出墙；右侧 2D 可编辑 |
+| 撤销 / 重做 / 保存 | ✅ | 扩展 Command + `SceneDocument v2` |
+| 弧墙、外部区域 | ❌ | P2 |
+| 柱 / 梁 / 烟道 / 楼梯 | ❌ | P2 |
+| 导入 CAD/JPG、搜户型 | ❌ | P2 |
+| 墙体拆分/连接/对齐工具 | ❌ | P2 |
+| 房间分割线、逐房层高 | ❌ | P2 |
+| 墙体材质、弧形墙、矮墙围成房间 | ❌ | P2 |
+| 家具约束在房间内 | ❌ | P2（P1 仅共存） |
+
+---
+
+## 2. 产品交互设计（对标酷家乐）
+
+### 2.1 模式与布局
+
+P0 为「摆家具」；P1 增加 **画户型模式**，布局在 P0 三栏基础上扩展：
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│ TopBar：模式[画户型|摆家具] | 保存 | 撤销 | 重做 | 清空                        │
+├──────────┬─────────────────────────────────────────┬───────────────────────┤
+│ FloorPlan│                                         │  ┌─────────────────┐  │
+│ ToolPanel│   主区域（随模式切换）                    │  │ 副视图           │  │
+│ (画户型)  │   画户型模式 → FloorPlanCanvas (2D)       │  │ 画户型时=3D预览  │  │
+│  或      │   摆家具模式 → SceneViewport (3D)        │  │ 摆家具时=2D俯视  │  │
+│ ModelPanel│                                        │  └─────────────────┘  │
+│ (摆家具)  │                                         │  PropertyPanel        │
+└──────────┴─────────────────────────────────────────┴───────────────────────┘
+│ StatusBar：2D/3D指示 | 当前工具 | 吸附开/关 | 缩放% | 快捷键提示              │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+**模式切换规则**：
+
+- 进入「画户型」：清除 `placementAssetId`；左侧切换为 `FloorPlanToolPanel`；中间为 2D 画布；右侧上部为 **只读 3D 墙体预览**（可 Orbit，不编辑家具）。
+- 进入「摆家具」：清除 `floorPlanTool`；左侧恢复 `ModelPanel`；中间为 3D 场景；右侧上部恢复现有 `TopView`（家具俯视）。
+- 同一 `SceneDocument` 同时持有 `floorPlan` 与 `entities`（家具）。
+
+### 2.2 左侧 — 画户型工具面板（FloorPlanToolPanel）
+
+对标酷家乐「画户型」左栏，P1 结构：
+
+| 分组 | 工具 | 图标/快捷键 | 行为 |
+|------|------|-------------|------|
+| **画房间** | 直墙 | `B` | 两点画墙；Esc 取消当前段 |
+| | 矩形墙 | `F` | 按下角点 → 拖拽 → 松开生成矩形四面墙 |
+| | 选择 | `V` / `Esc` | 默认指针，选中墙/门窗/房间 |
+| **放门窗** | 门 | `D` | 点击墙体放置，默认宽 900mm |
+| | 窗 | `W` | 点击墙体放置，默认宽 1500mm |
+| | 门洞 | `N` | 仅墙体开洞，无门扇模型 |
+| **（P2 预留）** | 弧墙 / 柱 / 梁 | `H` 等 | 面板占位禁用 |
+
+**导入户型**（P2）：面板顶部保留灰色「导入 CAD/JPG」入口，P1 点击提示「即将推出」。
+
+### 2.3 中央 — 2D 户型画布（FloorPlanCanvas）
+
+**渲染方案（P1 推荐）**：独立 **SVG 或 Canvas 2D** 层（不占用 R3F 主循环），原因：
+
+- 墙体标注、尺寸线、端点手柄在 2D 下更简单；
+- 酷家乐画户型本质是 CAD 式 2D 编辑；
+- 现有 `TopViewContent`（R3F 正交）可保留给「摆家具」副视图，避免双 R3F 编辑态冲突。
+
+**画布交互**：
+
+| 操作 | 直墙工具 | 矩形墙工具 | 选择工具 |
+|------|----------|------------|----------|
+| 第一次点击 | 确定起点，显示橡皮筋预览线 | 确定矩形一角 | 命中选中墙/门窗 |
+| 移动 | 预览墙段 + 长度标注 + 吸附高亮 | 预览矩形 + 四边尺寸 | 悬停高亮 |
+| 第二次点击 / 松开 | 提交墙段（`AddWallCommand`） | 提交四面墙 | — |
+| 右键 / Esc | 取消当前绘制 | 取消 | 取消选中 |
+| 双击墙体 | — | — | 进入墙体编辑（显示端点） |
+| 拖拽端点 | — | — | `UpdateWallEndpointCommand` |
+| 点击墙体（门/窗工具） | — | — | `AddOpeningCommand` |
+
+**吸附与正交**（对齐酷家乐）：
+
+- **网格吸附**：端点吸附 `gridSize`（默认 0.1m，UI 展示 mm）。
+- **端点吸附**：已有墙端点、交点，阈值 `SNAP_ENDPOINT = 0.15m`。
+- **正交**：直墙绘制中按住 `Shift` 限制为 0°/90°（释放后恢复自由角度）。
+- **定位线**：`wallAlign: 'center' | 'inner' | 'outer'`，按 `空格` 循环；影响墙段向内的偏移（见 §5.3）。
+
+**尺寸输入**（酷家乐小黑框）：
+
+- 绘制预览时，墙段中点显示长度值；点击数值或按 `Tab` 聚焦输入框；
+- 输入 mm 整数，Enter 确认后按方向重算终点；
+- 墙体选中后，标注线可改长度/厚度。
+
+### 2.4 右侧 — 参数面板（画户型上下文）
+
+未选中时显示 **楼层/户型全局**：
+
+| 字段 | 类型 | 默认 |
+|------|------|------|
+| 户型名称 | string | 未命名户型 |
+| 层高 | number (mm) | 2800 |
+| 默认墙厚 | number (mm) | 240 |
+| 定位线 | enum | inner |
+| 正交 | boolean | false |
+| 围成房间 | boolean | true |
+| 自动连接 | boolean | true |
+
+选中 **墙体**：
+
+| 字段 | 类型 |
+|------|------|
+| 长度 | readonly / 可编辑 |
+| 厚度 | number |
+| 高度 | number |
+| 角度 | number（度） |
+| 墙体类型 | 承重 / 非承重 |
+| 定位线 | center/inner/outer |
+
+选中 **门/窗/门洞**：
+
+| 字段 | 类型 |
+|------|------|
+| 宽度、高度 | number |
+| 离地高度 | number（窗） |
+| 沿墙偏移 | number（距墙起点） |
+| 翻转开门方向 | boolean（门，P1 可选） |
+
+选中 **房间**：
+
+| 字段 | 类型 |
+|------|------|
+| 名称 | string |
+| 面积 | readonly (m²) |
+| 周长 | readonly |
+
+### 2.5 3D 联动（WallMeshLayer）
+
+- `SceneViewport` 增加 `WallMeshLayer`：根据 `floorPlan.walls` 挤出 `BoxGeometry` 或 `ExtrudeGeometry`；
+- `floorPlan.openings` 在墙上做 **CSG 洞** 或 P1 简化：用深色贴图 + 略凹陷几何表示门洞；
+- 门/窗 P1 可用简单 box 模型（`public/models/door-default.glb`）沿墙定位；
+- 家具与墙 **不碰撞**（P1）；相机可穿墙。
+
+### 2.6 快捷键（P1）
+
+| 快捷键 | 功能 |
+|--------|------|
+| `B` | 直墙 |
+| `F` | 矩形墙 |
+| `V` | 选择 |
+| `D` / `W` / `N` | 门 / 窗 / 门洞 |
+| `Space` | 循环墙定位线 |
+| `Shift`（按住） | 正交 / 端点拖移锁角 |
+| `Delete` | 删除选中墙/门窗 |
+| `Ctrl/Cmd+Z` | 撤销 |
+| `Ctrl/Cmd+Shift+Z` | 重做 |
+
+---
+
+## 3. 技术栈与架构
+
+### 3.1 新增依赖（可选）
+
+```json
+{
+  "polygon-clipping": "^0.15.0",
+  "martinez-polygon-clipping": "^0.7.5"
+}
+```
+
+P1 房间闭合检测可用自研 **平面图最小环** 算法；若时间紧可用 `polygon-clipping` 辅助布尔运算（P2 房间分割）。
+
+### 3.2 目录结构（在 P0 上扩展）
+
+```
+src/
+├── app/layout/
+│   ├── FloorPlanToolPanel.tsx    # 画户型左栏
+│   ├── FloorPlanCanvas.tsx       # 2D 主画布（SVG）
+│   ├── StatusBar.tsx             # 底部状态
+│   └── EditorLayout.tsx          # 按 editorMode 分支
+├── features/
+│   └── floorPlan/
+│       ├── wallGeometry.ts       # 墙段 → 世界坐标/网格
+│       ├── roomDetection.ts      # 闭合环 → Room
+│       ├── openingPlacement.ts   # 墙上定位门窗
+│       ├── WallMeshLayer.tsx     # 3D 挤出
+│       ├── OpeningMesh.tsx
+│       └── annotations/          # 尺寸标注渲染
+├── stores/
+│   ├── floorPlanStore.ts         # 户型数据、工具态、绘制态
+│   └── editorStore.ts            # 增加 editorMode: 'furniture' | 'floorPlan'
+├── lib/
+│   ├── commands/floorPlanCommands.ts
+│   └── floorPlan/
+│       ├── persist.ts            # v1→v2 迁移
+│       └── snap.ts               # 端点/网格/正交
+└── types/
+    ├── scene.ts                  # SceneDocument v2
+    └── floorPlan.ts
+```
+
+### 3.3 数据流
+
+```mermaid
+flowchart TB
+  subgraph mode [编辑模式]
+    FP[画户型模式]
+    FU[摆家具模式]
+  end
+
+  FloorPlanToolPanel -->|setTool| floorPlanStore
+  FloorPlanCanvas -->|draw/edit| floorPlanStore
+  floorPlanStore -->|walls changed| WallMeshLayer
+  floorPlanStore -->|rooms| PropertyPanel
+  floorPlanStore -->|commands| historyStore
+  historyStore -->|undo/redo| floorPlanStore
+
+  ModelPanel -->|placement| sceneStore
+  sceneStore --> SceneViewport
+
+  floorPlanStore --> document[(SceneDocument v2)]
+  sceneStore --> document
+  document --> persistence[IndexedDB / JSON]
+```
+
+**原则**：
+
+- `floorPlan` 与 `entities` **分字段存储**，同一 document 持久化；
+- 2D 画布为户型真源；3D 墙体为 **派生渲染**（listen `floorPlan`）；
+- 家具仍在 `entities`，摆家具模式才显示 Gizmo。
+
+---
+
+## 4. 数据模型
+
+### 4.1 类型定义（`types/floorPlan.ts`）
+
+```typescript
+export type WallAlign = 'center' | 'inner' | 'outer';
+export type WallKind = 'normal' | 'low'; // P2 矮墙
+export type OpeningType = 'door' | 'window' | 'opening';
+
+/** 2D 平面坐标，对应世界 XZ，单位：米 */
+export type Vec2 = { x: number; z: number };
+
+export interface WallSegment {
+  id: string;
+  start: Vec2;
+  end: Vec2;
+  thickness: number;      // m，默认 0.24
+  height: number;         // m，默认 2.8
+  align: WallAlign;
+  kind: 'bearing' | 'nonBearing';
+  /** 用于房间检测的拓扑节点 id（自动维护） */
+  startNodeId: string;
+  endNodeId: string;
+}
+
+export interface Opening {
+  id: string;
+  type: OpeningType;
+  wallId: string;
+  /** 沿墙起点方向的偏移，m */
+  offset: number;
+  width: number;
+  height: number;
+  sillHeight: number;       // 窗离地，门=0
+  flip?: boolean;
+}
+
+export interface Room {
+  id: string;
+  name: string;
+  /** 闭合环（墙段 id 有序列表）或顶点环 */
+  wallLoop: string[];
+  area: number;           // m²，计算值
+  centroid: Vec2;
+}
+
+export interface FloorPlanSettings {
+  floorHeight: number;    // 默认 2.8
+  defaultWallThickness: number;
+  defaultAlign: WallAlign;
+  autoRoom: boolean;
+  autoJoin: boolean;
+}
+
+export interface FloorPlan {
+  settings: FloorPlanSettings;
+  walls: Record<string, WallSegment>;
+  wallIds: string[];
+  openings: Record<string, Opening>;
+  openingIds: string[];
+  rooms: Record<string, Room>;
+  roomIds: string[];
+  /** 拓扑节点：合并后的墙端点 */
+  nodes: Record<string, Vec2>;
+}
+```
+
+### 4.2 SceneDocument 升级 v2
+
+```typescript
+// types/scene.ts
+export interface SceneDocument {
+  version: 2;
+  id: string;
+  settings: SceneSettings;
+  floorPlan: FloorPlan;           // 新增，默认可为空户型
+  entities: Record<string, SceneEntity>;
+  rootIds: string[];
+  updatedAt: number;
+}
+
+// 迁移：version 1 → 2 时注入空 floorPlan
+```
+
+### 4.3 墙定位线几何（与酷家乐一致）
+
+墙段存储 **定位线** `start→end`（用户点击的两点）。渲染实体墙时，根据 `align` 与 `thickness` 算法向偏移：
+
+- `center`：定位线即墙中心线；
+- `inner`：定位线墙内侧（围合房间内侧，顺时针外轮廓时用）；
+- `outer`：定位线墙外侧。
+
+偏移方向为墙法线，按 `(end - start)` 逆时针旋转 90° 为内侧（可配置）。
+
+### 4.4 拓扑与自动连接
+
+每次 `AddWall` / `UpdateEndpoint`：
+
+1. 在 `nodes` 中查找 `SNAP_ENDPOINT` 内已有节点，否则新建节点；
+2. 墙 `startNodeId` / `endNodeId` 指向节点；
+3. 同一节点连接 ≥2 段墙即视为 **连接**；P1 连接角用 **平接**（miter 简化：墙段端部不延伸，仅共享节点坐标）；
+4. P2 再做斜接与墙体布尔合并。
+
+### 4.5 房间自动生成
+
+当 `autoRoom === true` 且墙体图出现 **新增闭合环**：
+
+1. 以墙段为边、节点为顶点建平面图；
+2. 找最小简单环（newly formed cycle）；
+3. 创建 `Room`：`area` = 鞋带公式，`centroid` 用于 2D 标注房间名；
+4. 房间选中后可在属性面板改名。
+
+矩形墙工具：一次提交 4 条 `WallSegment` + 触发房间检测（通常 1 个房间）。
+
+---
+
+## 5. 状态管理
+
+### 5.1 editorStore 扩展
+
+```typescript
+type EditorMode = 'furniture' | 'floorPlan';
+
+interface EditorState {
+  mode: EditorMode;
+  setMode: (mode: EditorMode) => void;
+  // 画户型绘制态
+  floorPlanTool: 'select' | 'wall' | 'rectWall' | 'door' | 'window' | 'opening' | null;
+  orthoLocked: boolean;  // 面板开关
+  // ...
+}
+```
+
+### 5.2 floorPlanStore
+
+```typescript
+interface FloorPlanState {
+  /** 与 sceneStore.document.floorPlan 同步，或通过 selector 直接读 document */
+  draft: FloorPlan | null;  // 绘制中的预览墙，不入历史
+
+  selectedIds: string[];   // wall | opening | room id，带 kind 前缀或分字段
+  setTool: (tool: ...) => void;
+  beginWall: (point: Vec2) => void;
+  updateWallPreview: (point: Vec2) => void;
+  commitWall: () => void;
+  addRectWalls: (cornerA: Vec2, cornerB: Vec2) => void;
+  addOpeningOnWall: (wallId: string, pickPoint: Vec2) => void;
+  updateWallEndpoint: (wallId: string, end: 'start' | 'end', point: Vec2) => void;
+  removeSelected: () => void;
+  detectRooms: () => void;
+}
+```
+
+**与 sceneStore 关系（二选一，P1 推荐 B）**：
+
+- **A**：`floorPlan` 完全在 `sceneStore.document` 内，actions 在 `sceneStore`。
+- **B**：独立 `floorPlanStore`，变更后写回 `sceneStore.document.floorPlan`（便于 2D 组件订阅）。
+
+推荐 **A** 保持 Single Source of Truth，避免双 store 不同步。
+
+### 5.3 sceneStore 扩展 actions
+
+```typescript
+addWallSegment: (seg: Omit<WallSegment, 'id' | 'startNodeId' | 'endNodeId'>) => void;
+addRectWallRoom: (a: Vec2, b: Vec2) => void;
+updateWall: (id: string, patch: Partial<WallSegment>) => void;
+updateWallEndpoint: (id: string, end: 'start' | 'end', point: Vec2) => void;
+addOpening: (opening: Omit<Opening, 'id'>) => void;
+updateOpening: (id: string, patch: Partial<Opening>) => void;
+removeFloorPlanSelection: () => void;
+updateFloorPlanSettings: (patch: Partial<FloorPlanSettings>) => void;
+```
+
+---
+
+## 6. Command 与历史记录
+
+| Command | 触发 |
+|---------|------|
+| `AddWallCommand` | 直墙第二次点击 |
+| `AddRectWallsCommand` | 矩形墙松开 |
+| `UpdateWallCommand` | 属性面板改厚度/高度/角度 |
+| `UpdateWallEndpointCommand` | 拖端点结束 |
+| `RemoveFloorPlanEntitiesCommand` | 删除墙/门窗 |
+| `AddOpeningCommand` | 墙上放置门窗 |
+| `UpdateOpeningCommand` | 改门窗尺寸 |
+| `RegenerateRoomsCommand` | 墙体变化后房间更新（可合并到墙 Command 内） |
+| `UpdateFloorPlanSettingsCommand` | 全局户型设置 |
+
+**注意**：一次矩形墙 = 1 条历史记录（内含 4 墙段）。拖端点仅在 `pointerup` 入栈。
+
+---
+
+## 7. 核心算法摘要
+
+### 7.1 点击 → 世界坐标
+
+```typescript
+// FloorPlanCanvas：屏幕坐标 → Vec2 (x, z)
+// 使用 SVG viewBox 或 Canvas transform 的逆矩阵
+function screenToWorld(sx: number, sy: number, view: ViewState): Vec2;
+```
+
+### 7.2 正交吸附
+
+```typescript
+function applyOrtho(start: Vec2, end: Vec2): Vec2 {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  if (Math.abs(dx) >= Math.abs(dz)) return { x: end.x, z: start.z };
+  return { x: start.x, z: end.z };
+}
+```
+
+### 7.3 墙上放置门窗
+
+```typescript
+function projectPointOnWall(wall: WallSegment, p: Vec2): { offset: number; distance: number } {
+  // 投影到线段，distance 用于拒绝远离墙的点击
+  // offset = clamp(投影长度, margin, wallLength - width - margin)
+}
+```
+
+### 7.4 房间检测（P1 简化）
+
+- 墙图转 **平面图**（忽略墙厚，仅用中心线拓扑）；
+- DFS 找环；过滤面积 < 0.5m² 的碎环；
+- 新环 → `Room`；消失的环 → 删除对应 Room（保留用户自定义名称到 id 映射）。
+
+---
+
+## 8. UI 组件清单
+
+| 组件 | 职责 |
+|------|------|
+| `EditorLayout` | 按 `editorMode` 切换左栏/主区/副视图 |
+| `FloorPlanToolPanel` | 画墙、门窗工具入口 |
+| `FloorPlanCanvas` | SVG 2D 编辑主画布 |
+| `WallAnnotations` | 墙长/厚度标注 |
+| `FloorPlanPropertyPanel` | 户型/墙/门窗/房间属性（可复用 PropertyPanel 分支） |
+| `WallMeshLayer` | 3D 墙体挤出 |
+| `OpeningMesh` | 3D 门窗简单几何 |
+| `PreviewViewport` | 画户型模式下的 3D 预览（缩小版 SceneViewport） |
+| `StatusBar` | 工具名、吸附、缩放 |
+| `ModeSwitch` | TopBar 模式切换 |
+
+---
+
+## 9. 持久化与迁移
+
+```typescript
+// lib/floorPlan/migrate.ts
+export function normalizeSceneDocument(raw: unknown): SceneDocument {
+  if (raw.version === 1) {
+    return { ...raw, version: 2, floorPlan: createEmptyFloorPlan() };
+  }
+  // validate floorPlan schema
+}
+```
+
+- IndexedDB / JSON 导入导出自动带 `floorPlan`；
+- 「清空画布」：弹窗选项 — 仅清空家具 / 仅清空户型 / 全部清空（P1 默认全部）。
+
+---
+
+## 10. 实施计划
+
+| 阶段 | 任务 | 预估 |
+|------|------|------|
+| **F1** | `SceneDocument v2` + 类型 + v1 迁移 + 空户型初始化 | 0.5d |
+| **F2** | `editorMode` 切换 + `FloorPlanToolPanel` + `StatusBar` | 0.5d |
+| **F3** | `FloorPlanCanvas`（SVG）+ 网格 + 屏幕坐标变换 | 1d |
+| **F4** | 直墙绘制预览 + 提交 + 端点/网格吸附 + 正交 | 1d |
+| **F5** | 矩形墙 + 墙体选中 + 端点拖拽 + 尺寸标注输入 | 1d |
+| **F6** | `WallMeshLayer` 3D 挤出 + 画户型模式 3D 预览窗 | 1d |
+| **F7** | 门/窗/门洞放置 + 3D 简单几何 + 属性面板 | 1d |
+| **F8** | 房间闭合检测 + 房间属性 + 墙体/户型 Command + undo | 1d |
+| **F9** | 属性面板（墙/门窗/房间/全局）+ 快捷键 + 联调 | 1d |
+| **F10** | 清空策略 + 保存迁移 + 验收 polish | 0.5d |
+
+**合计**：约 **8.5 人日**（单人），较 P0 增加约 3 人日。
+
+---
+
+## 11. 验收标准
+
+- [ ] 可在「画户型 / 摆家具」模式间切换，且工具状态不串扰
+- [ ] 直墙：两点绘制，Shift 正交，空格切换定位线，可输入墙长（mm）
+- [ ] 矩形墙：拖拽生成四面墙并自动围成房间
+- [ ] 墙段端点自动吸附连接；选中墙可拖端点改长度，属性面板改厚度/高度
+- [ ] 闭合墙体后自动生成房间，显示面积；可改房间名
+- [ ] 门/窗/门洞可放置于墙体，超出墙宽时 clamp 或提示
+- [ ] 2D 画布编辑后，3D 视图实时显示墙体与洞口
+- [ ] 摆家具模式下，既有 P0 功能（放置、Gizmo、组合、材质等）不受影响
+- [ ] 撤销/重做覆盖画墙、改墙、门窗、删除、房间更新
+- [ ] 保存并刷新后，户型与家具均可从 IndexedDB 恢复（v2 文档）
+
+---
+
+## 12. 风险与 P2 预留
+
+| 项 | 说明 |
+|----|------|
+| 墙厚转角 | P1 平接；斜接/圆角 P2 |
+| 弧墙 | 需贝塞尔/弧段墙模型，P2 |
+| 性能 | 墙段 <200、房间 <50 时 SVG 足够；更大考虑 Canvas |
+| 房间检测稳定性 | 复杂自交户型需 robust 布尔库，P2 |
+| 家具与墙关系 | P2 吸附墙、禁止穿墙、房间平面约束 |
+| CAD 导入 | P2 独立管线 |
+
+---
+
+## 13. 附录
+
+### 13.1 空户型初始数据
+
+```typescript
+export const createEmptyFloorPlan = (): FloorPlan => ({
+  settings: {
+    floorHeight: 2.8,
+    defaultWallThickness: 0.24,
+    defaultAlign: 'inner',
+    autoRoom: true,
+    autoJoin: true,
+  },
+  walls: {},
+  wallIds: [],
+  openings: {},
+  openingIds: [],
+  rooms: {},
+  roomIds: [],
+  nodes: {},
+});
+```
+
+### 13.2 录屏 UI 对照速查（酷家乐 5.0）
+
+| 录屏元素 | P1 实现映射 |
+|----------|-------------|
+| 左侧「画房间 → 直墙 B」 | `FloorPlanToolPanel` + 快捷键 B |
+| 左侧「矩形墙 F」 | 矩形墙工具 |
+| 左侧「放门窗」 | 门 D / 窗 W / 门洞 N |
+| 右侧「绘制墙」参数 | `FloorPlanPropertyPanel` 全局 + 墙选中 |
+| 定位线：内部 | `wallAlign: 'inner'` |
+| 高度 2800、厚度 240 | `floorHeight` / `thickness` 默认 |
+| 围成房间、自动连接 | `autoRoom` / `autoJoin` |
+| 底部 2D / 3D | `editorMode` + StatusBar 视图指示 |
+| 中央网格画布 | `FloorPlanCanvas` |
+
+### 13.3 参考链接
+
+- [画户型操作介绍](https://www.kujiale.com/hc/article/3FO4K4VLNOA7)
+- [墙体绘制工具新手入门](https://www.kujiale.com/hc/article/3FO4K4VOEVCY)
+- [放置/修改门窗](https://www.kujiale.com/hc/article/3FO4K4VYLBLK)
+- [了解工具界面](https://www.kujiale.com/hc/article/3FO4K4VVGD1O)
+
+---
+
+*文档结束 — 建议从 F1（数据模型 v2）与 F3（2D 画布）开始实施。*

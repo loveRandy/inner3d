@@ -1,0 +1,26 @@
+.panel-header-style() {
+  padding: 10px 12px;
+  font-weight: 600;
+  color: @color-text;
+  border-bottom: 1px solid @color-border;
+  background: @color-panel-header;
+}
+
+.button-base() {
+  padding: 4px 12px;
+  border: 1px solid @color-border-hover;
+  border-radius: @radius-sm;
+  background: @color-panel;
+  color: @color-text;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: @color-surface;
+    border-color: @color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}

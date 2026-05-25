@@ -1,0 +1,9 @@
+3D 模型资源许可说明
+====================
+
+本项目的家具模型来自 KayKit - Furniture Bits（CC0）：
+https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0
+
+许可：CC0 Public Domain，可免费用于个人与商业项目，无需署名。
+
+预览缩略图裁剪自同仓库的 sample.png / contents.png。

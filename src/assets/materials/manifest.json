@@ -1,0 +1,74 @@
+[
+  {
+    "id": "fabric-white",
+    "name": "白色织物",
+    "category": "fabric",
+    "color": "#f5f5f4",
+    "thumbnail": "/materials/thumbnails/fabric-white.svg",
+    "roughness": 0.92,
+    "metalness": 0
+  },
+  {
+    "id": "fabric-gray",
+    "name": "灰色织物",
+    "category": "fabric",
+    "color": "#9ca3af",
+    "thumbnail": "/materials/thumbnails/fabric-gray.svg",
+    "roughness": 0.9,
+    "metalness": 0
+  },
+  {
+    "id": "fabric-blue",
+    "name": "蓝色织物",
+    "category": "fabric",
+    "color": "#3b82f6",
+    "thumbnail": "/materials/thumbnails/fabric-blue.svg",
+    "roughness": 0.88,
+    "metalness": 0
+  },
+  {
+    "id": "fabric-beige",
+    "name": "米色织物",
+    "category": "fabric",
+    "color": "#d6cfc7",
+    "thumbnail": "/materials/thumbnails/fabric-beige.svg",
+    "roughness": 0.9,
+    "metalness": 0
+  },
+  {
+    "id": "wood-oak",
+    "name": "橡木",
+    "category": "wood",
+    "color": "#c4a574",
+    "thumbnail": "/materials/thumbnails/wood-oak.svg",
+    "roughness": 0.65,
+    "metalness": 0
+  },
+  {
+    "id": "wood-walnut",
+    "name": "胡桃木",
+    "category": "wood",
+    "color": "#5c4033",
+    "thumbnail": "/materials/thumbnails/wood-walnut.svg",
+    "roughness": 0.6,
+    "metalness": 0
+  },
+  {
+    "id": "leather-brown",
+    "name": "棕色皮革",
+    "category": "leather",
+    "color": "#8b4513",
+    "thumbnail": "/materials/thumbnails/leather-brown.svg",
+    "roughness": 0.75,
+    "metalness": 0.05
+  },
+  {
+    "id": "metal-brushed",
+    "name": "拉丝金属",
+    "category": "metal",
+    "color": "#cbd5e1",
+    "thumbnail": "/materials/thumbnails/metal-brushed.svg",
+    "roughness": 0.35,
+    "metalness": 0.85
+  }
+]

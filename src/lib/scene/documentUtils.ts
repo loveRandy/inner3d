@@ -1,5 +1,6 @@
 import type { SceneDocument, SceneEntity, SceneSettings, Transform } from '@/types/scene';
 import { createEmptyDocument } from '@/types/scene';
+import { createEmptyFloorPlan } from '@/types/floorPlan';
 import { randomUUID } from '@/lib/id/randomUUID';
 import { cloneTransform } from '@/lib/transform/worldTransform';
 
@@ -11,19 +12,26 @@ export function normalizeHexColor(value: string | undefined, fallback: string): 
 }
 
 export function normalizeSceneDocument(doc: SceneDocument): SceneDocument {
-  const defaults = createEmptyDocument().settings;
+  const defaults = createEmptyDocument();
   const next = cloneDocument(doc);
+  next.version = 2;
   next.settings = {
-    ...defaults,
+    ...defaults.settings,
     ...next.settings,
-    backgroundColor: normalizeHexColor(next.settings.backgroundColor, defaults.backgroundColor),
+    backgroundColor: normalizeHexColor(next.settings.backgroundColor, defaults.settings.backgroundColor),
   };
+  if (!next.floorPlan) {
+    next.floorPlan = createEmptyFloorPlan();
+  }
   return next;
 }
+
+import type { FloorPlanSelection } from '@/types/floorPlan';
 
 export interface DocumentSnapshot {
   document: SceneDocument;
   selectedIds: string[];
+  floorPlanSelection: FloorPlanSelection[];
 }
 
 export function cloneDocument(doc: SceneDocument): SceneDocument {
@@ -33,20 +41,24 @@ export function cloneDocument(doc: SceneDocument): SceneDocument {
 export function snapshotState(
   document: SceneDocument,
   selectedIds: string[],
+  floorPlanSelection: FloorPlanSelection[] = [],
 ): DocumentSnapshot {
   return {
     document: cloneDocument(document),
     selectedIds: [...selectedIds],
+    floorPlanSelection: [...floorPlanSelection],
   };
 }
 
 export function applySnapshot(snapshot: DocumentSnapshot): {
   document: SceneDocument;
   selectedIds: string[];
+  floorPlanSelection: FloorPlanSelection[];
 } {
   return {
     document: cloneDocument(snapshot.document),
     selectedIds: [...snapshot.selectedIds],
+    floorPlanSelection: [...snapshot.floorPlanSelection],
   };
 }
 

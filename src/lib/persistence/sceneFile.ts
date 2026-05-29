@@ -6,6 +6,7 @@ import type {
   Vec3,
 } from '@/types/scene';
 import { createEmptyDocument } from '@/types/scene';
+import type { FloorPlan } from '@/types/floorPlan';
 import { getAssetById } from '@/features/assets';
 import { getMaterialPresetById } from '@/features/materials';
 import { normalizeSceneDocument } from '@/lib/scene/documentUtils';
@@ -127,7 +128,7 @@ export function validateSceneDocument(data: unknown): SceneDocument {
     throw new Error('无效的场景文件格式');
   }
 
-  if (payload.version !== 1) {
+  if (payload.version !== 1 && payload.version !== 2) {
     throw new Error('不支持的场景版本');
   }
 
@@ -152,9 +153,11 @@ export function validateSceneDocument(data: unknown): SceneDocument {
   }
 
   const doc: SceneDocument = {
-    version: 1,
+    version: payload.version === 2 ? 2 : 1,
     id: typeof payload.id === 'string' && payload.id ? payload.id : randomUUID(),
     settings: payload.settings,
+    floorPlan:
+      isRecord(payload.floorPlan) ? (payload.floorPlan as unknown as FloorPlan) : undefined,
     entities,
     rootIds: [...payload.rootIds],
     updatedAt: typeof payload.updatedAt === 'number' ? payload.updatedAt : Date.now(),

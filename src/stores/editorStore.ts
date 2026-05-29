@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { MaterialOverride, MaterialPresetId, MeshPartKey } from '@/types/scene';
+import type { FloorPlanTool, Vec2 } from '@/types/floorPlan';
 import { useSceneRefsStore } from '@/stores/sceneRefsStore';
 import { useSceneStore } from '@/stores/sceneStore';
 import { getAssetById } from '@/features/assets';
@@ -11,6 +12,8 @@ import {
   type ModelPartTreeNode,
 } from '@/lib/scene/meshParts';
 
+export type EditorMode = 'furniture' | 'floorPlan';
+
 export interface MaterialModeState {
   active: boolean;
   entityId: string;
@@ -21,11 +24,26 @@ export interface MaterialModeState {
 }
 
 interface EditorState {
+  editorMode: EditorMode;
+  floorPlanTool: FloorPlanTool;
+  wallDrawStart: Vec2 | null;
+  wallDrawPreview: Vec2 | null;
+  rectDrawStart: Vec2 | null;
+  rectDrawPreview: Vec2 | null;
+  floorPlanZoom: number;
   clearConfirmOpen: boolean;
   saveMessage: string | null;
   isTransformDragging: boolean;
   gizmoPointerActive: boolean;
   materialMode: MaterialModeState | null;
+  setEditorMode: (mode: EditorMode) => void;
+  setFloorPlanTool: (tool: FloorPlanTool) => void;
+  setWallDrawStart: (point: Vec2 | null) => void;
+  setWallDrawPreview: (point: Vec2 | null) => void;
+  setRectDrawStart: (point: Vec2 | null) => void;
+  setRectDrawPreview: (point: Vec2 | null) => void;
+  setFloorPlanZoom: (zoom: number) => void;
+  resetFloorPlanDrawState: () => void;
   setClearConfirmOpen: (open: boolean) => void;
   setSaveMessage: (message: string | null) => void;
   setTransformDragging: (dragging: boolean) => void;
@@ -40,11 +58,61 @@ interface EditorState {
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
+  editorMode: 'furniture',
+  floorPlanTool: 'select',
+  wallDrawStart: null,
+  wallDrawPreview: null,
+  rectDrawStart: null,
+  rectDrawPreview: null,
+  floorPlanZoom: 1,
   clearConfirmOpen: false,
   saveMessage: null,
   isTransformDragging: false,
   gizmoPointerActive: false,
   materialMode: null,
+
+  setEditorMode: (mode) => {
+    set({
+      editorMode: mode,
+      wallDrawStart: null,
+      wallDrawPreview: null,
+      rectDrawStart: null,
+      rectDrawPreview: null,
+    });
+    if (mode === 'floorPlan') {
+      useSceneStore.getState().setPlacementAsset(null);
+    } else {
+      set({ floorPlanTool: 'select' });
+      useSceneStore.getState().setFloorPlanSelection([]);
+    }
+  },
+
+  setFloorPlanTool: (tool) => {
+    set({
+      floorPlanTool: tool,
+      wallDrawStart: null,
+      wallDrawPreview: null,
+      rectDrawStart: null,
+      rectDrawPreview: null,
+    });
+    useSceneStore.getState().setFloorPlanSelection([]);
+    useSceneStore.getState().setHoveredFloorPlan(null);
+  },
+
+  setWallDrawStart: (point) => set({ wallDrawStart: point }),
+  setWallDrawPreview: (point) => set({ wallDrawPreview: point }),
+  setRectDrawStart: (point) => set({ rectDrawStart: point }),
+  setRectDrawPreview: (point) => set({ rectDrawPreview: point }),
+  setFloorPlanZoom: (zoom) => set({ floorPlanZoom: Math.max(0.25, Math.min(4, zoom)) }),
+
+  resetFloorPlanDrawState: () =>
+    set({
+      wallDrawStart: null,
+      wallDrawPreview: null,
+      rectDrawStart: null,
+      rectDrawPreview: null,
+    }),
+
   setClearConfirmOpen: (open) => set({ clearConfirmOpen: open }),
   setSaveMessage: (message) => set({ saveMessage: message }),
   setTransformDragging: (dragging) => set({ isTransformDragging: dragging }),

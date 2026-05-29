@@ -10,3 +10,14 @@ export {
   createUpdateSettingsCommand,
   createUpdateTransformCommand,
 } from './sceneCommands';
+export {
+  createAddOpeningCommand,
+  createAddRectWallsCommand,
+  createAddWallCommand,
+  createRemoveFloorPlanSelectionCommand,
+  createUpdateFloorPlanSettingsCommand,
+  createUpdateOpeningCommand,
+  createUpdateRoomCommand,
+  createUpdateWallCommand,
+  createUpdateWallEndpointCommand,
+} from './floorPlanCommands';

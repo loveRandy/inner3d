@@ -25,10 +25,11 @@ import {
 } from '@/lib/transform/worldTransform';
 import { useSceneStore } from '@/stores/sceneStore';
 import { randomUUID } from '@/lib/id/randomUUID';
+import { createEmptyFloorPlan } from '@/types/floorPlan';
 
 function getCurrentSnapshot(): DocumentSnapshot {
-  const { document, selectedIds } = useSceneStore.getState();
-  return snapshotState(document, selectedIds);
+  const { document, selectedIds, floorPlanSelection } = useSceneStore.getState();
+  return snapshotState(document, selectedIds, floorPlanSelection);
 }
 
 function restoreSnapshot(before: DocumentSnapshot) {
@@ -36,6 +37,7 @@ function restoreSnapshot(before: DocumentSnapshot) {
   useSceneStore.setState({
     document: restored.document,
     selectedIds: restored.selectedIds,
+    floorPlanSelection: restored.floorPlanSelection,
   });
 }
 
@@ -239,8 +241,12 @@ export function createClearSceneCommand(): Command {
       useSceneStore.setState((state) => {
         state.document.entities = {};
         state.document.rootIds = [];
+        if (state.document.floorPlan) {
+          state.document.floorPlan = createEmptyFloorPlan();
+        }
         state.document.updatedAt = Date.now();
         state.selectedIds = [];
+        state.floorPlanSelection = [];
         state.placementAssetId = null;
       });
     },

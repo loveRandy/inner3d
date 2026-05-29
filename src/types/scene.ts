@@ -1,4 +1,5 @@
 import { randomUUID } from '@/lib/id/randomUUID';
+import { createEmptyFloorPlan, type FloorPlan } from '@/types/floorPlan';
 
 export type Vec3 = { x: number; y: number; z: number };
 
@@ -63,9 +64,10 @@ export interface SceneSettings {
 }
 
 export interface SceneDocument {
-  version: 1;
+  version: 1 | 2;
   id: string;
   settings: SceneSettings;
+  floorPlan?: FloorPlan;
   entities: Record<string, SceneEntity>;
   rootIds: string[];
   updatedAt: number;
@@ -79,7 +81,7 @@ export const DEFAULT_TRANSFORM: Transform = {
 
 export function createEmptyDocument(): SceneDocument {
   return {
-    version: 1,
+    version: 2,
     id: randomUUID(),
     settings: {
       name: '未命名场景',
@@ -88,6 +90,7 @@ export function createEmptyDocument(): SceneDocument {
       gridSize: 0.3,
       ambientIntensity: 0.85,
     },
+    floorPlan: createEmptyFloorPlan(),
     entities: {},
     rootIds: [],
     updatedAt: Date.now(),

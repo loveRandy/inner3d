@@ -6,6 +6,7 @@ import { TransformGizmo } from './TransformGizmo';
 import { SceneOutlines } from './SceneOutlines';
 import { SceneInteraction } from './SceneInteraction';
 import { MaterialModeButton } from '@/features/material/MaterialModeButton';
+import { WallMeshLayer } from '@/features/floorPlan/WallMeshLayer';
 
 export function SceneContent() {
   const rootIds = useSceneStore((s) => s.document.rootIds);
@@ -15,6 +16,8 @@ export function SceneContent() {
   const ambientIntensity = useSceneStore((s) => s.document.settings.ambientIntensity);
   const backgroundColor = useSceneStore((s) => s.document.settings.backgroundColor);
   const placementAssetId = useSceneStore((s) => s.placementAssetId);
+  const floorPlan = useSceneStore((s) => s.document.floorPlan);
+  const floorPlanSelection = useSceneStore((s) => s.floorPlanSelection);
 
   return (
     <>
@@ -49,6 +52,16 @@ export function SceneContent() {
           sectionColor="#64748b"
           fadeDistance={40}
           infiniteGrid
+        />
+      )}
+
+      {floorPlan && (
+        <WallMeshLayer
+          walls={floorPlan.walls}
+          wallIds={floorPlan.wallIds}
+          openings={floorPlan.openings}
+          openingIds={floorPlan.openingIds}
+          selection={floorPlanSelection}
         />
       )}
 

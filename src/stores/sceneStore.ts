@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { SceneDocument, SceneEntity, Transform } from '@/types/scene';
 import { createEmptyDocument } from '@/types/scene';
+import type { FloorPlanSelection } from '@/types/floorPlan';
 import { normalizeSceneDocument } from '@/lib/scene/documentUtils';
 import { buildGroupFromSelection, buildUngroup } from '@/lib/commands/sceneCommands';
 import { getWorldTransform } from '@/lib/transform/worldTransform';
@@ -9,12 +10,16 @@ import { getWorldTransform } from '@/lib/transform/worldTransform';
 interface SceneState {
   document: SceneDocument;
   selectedIds: string[];
+  floorPlanSelection: FloorPlanSelection[];
   placementAssetId: string | null;
   hoveredEntityId: string | null;
+  hoveredFloorPlanId: { kind: FloorPlanSelection['kind']; id: string } | null;
 
   setPlacementAsset: (assetId: string | null) => void;
   setHoveredEntity: (entityId: string | null) => void;
+  setHoveredFloorPlan: (item: { kind: FloorPlanSelection['kind']; id: string } | null) => void;
   setSelection: (ids: string[]) => void;
+  setFloorPlanSelection: (items: FloorPlanSelection[]) => void;
   toggleSelection: (id: string, additive: boolean) => void;
   loadDocument: (doc: SceneDocument) => void;
   removeEntitiesByIds: (ids: string[]) => void;
@@ -39,8 +44,10 @@ export const useSceneStore = create<SceneState>()(
   immer((set, get) => ({
     document: createEmptyDocument(),
     selectedIds: [],
+    floorPlanSelection: [],
     placementAssetId: null,
     hoveredEntityId: null,
+    hoveredFloorPlanId: null,
 
     setPlacementAsset: (assetId) => {
       set({ placementAssetId: assetId, hoveredEntityId: null });
@@ -50,8 +57,16 @@ export const useSceneStore = create<SceneState>()(
       set({ hoveredEntityId: entityId });
     },
 
+    setHoveredFloorPlan: (item) => {
+      set({ hoveredFloorPlanId: item });
+    },
+
     setSelection: (ids) => {
-      set({ selectedIds: ids });
+      set({ selectedIds: ids, floorPlanSelection: [] });
+    },
+
+    setFloorPlanSelection: (items) => {
+      set({ floorPlanSelection: items, selectedIds: [] });
     },
 
     toggleSelection: (id, additive) => {
@@ -72,8 +87,10 @@ export const useSceneStore = create<SceneState>()(
       set({
         document: normalizeSceneDocument(doc),
         selectedIds: [],
+        floorPlanSelection: [],
         placementAssetId: null,
         hoveredEntityId: null,
+        hoveredFloorPlanId: null,
       });
     },
 

@@ -18,6 +18,8 @@ export function TopBar() {
   const execute = useHistoryStore((s) => s.execute);
   const clearHistory = useHistoryStore((s) => s.clear);
   const setClearConfirmOpen = useEditorStore((s) => s.setClearConfirmOpen);
+  const editorMode = useEditorStore((s) => s.editorMode);
+  const setEditorMode = useEditorStore((s) => s.setEditorMode);
   const setSaveMessage = useEditorStore((s) => s.setSaveMessage);
   const saveMessage = useEditorStore((s) => s.saveMessage);
   const materialMode = useEditorStore((s) => s.materialMode);
@@ -133,6 +135,22 @@ export function TopBar() {
   return (
     <header className="top-bar">
       <div className="top-bar__brand">3D 场景编辑器</div>
+      <div className="top-bar__mode">
+        <button
+          type="button"
+          className={editorMode === 'floorPlan' ? 'is-active' : ''}
+          onClick={() => setEditorMode('floorPlan')}
+        >
+          画户型
+        </button>
+        <button
+          type="button"
+          className={editorMode === 'furniture' ? 'is-active' : ''}
+          onClick={() => setEditorMode('furniture')}
+        >
+          摆家具
+        </button>
+      </div>
       <div className="top-bar__actions">
         <button type="button" onClick={handleSave}>
           保存

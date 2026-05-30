@@ -37,16 +37,25 @@ function quadSlice(
   ];
 }
 
-/** 墙体扣除门窗洞后的实心四边形列表 */
+import { getWallCutOpenings } from './wallSolidParts';
+
+/** 墙体扣除门洞/窗洞后的实心四边形列表（2D 用） */
 export function getWallSolidQuads(
   wall: WallSegment,
   openings: Opening[],
+): [Vec2, Vec2, Vec2, Vec2][] {
+  return getWallSolidQuadsForCut(wall, getWallCutOpenings(openings));
+}
+
+function getWallSolidQuadsForCut(
+  wall: WallSegment,
+  cutOpenings: Opening[],
 ): [Vec2, Vec2, Vec2, Vec2][] {
   const len = wallLength(wall);
   if (len < 1e-6) return [];
 
   const quad = getWallQuad(wall);
-  const gaps = openings
+  const gaps = cutOpenings
     .map((o) => ({
       t0: Math.max(0, o.offset / len),
       t1: Math.min(1, (o.offset + o.width) / len),

@@ -434,11 +434,14 @@ export function FloorPlanCanvas() {
           if (!wall) return null;
           const wallOpenings = getOpeningsOnWall(floorPlan.openings, floorPlan.openingIds, id);
           const previewOnWall =
-            openingPreview?.wallId === id ? openingPreview.opening : null;
-          const openingsForCut = previewOnWall
-            ? [...wallOpenings, previewOnWall]
-            : wallOpenings;
-          const quads = getWallSolidQuads(wall, openingsForCut);
+            openingPreview?.wallId === id &&
+            (openingPreview.opening.type === 'opening' || openingPreview.opening.type === 'window')
+              ? openingPreview.opening
+              : null;
+          const quads = getWallSolidQuads(
+            wall,
+            previewOnWall ? [...wallOpenings, previewOnWall] : wallOpenings,
+          );
           const selected = isSelected('wall', id);
           const hovered = hoveredFloorPlanId?.kind === 'wall' && hoveredFloorPlanId.id === id;
           return (

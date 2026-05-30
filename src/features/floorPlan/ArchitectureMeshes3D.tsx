@@ -2,121 +2,303 @@ import { useMemo } from 'react';
 import type { Opening, WallSegment } from '@/types/floorPlan';
 import { ARCH_COLORS } from './architectureStyle';
 import { getOpeningLayout3D } from './openingLayout3D';
-import { SolidBoxWithEdges } from './MeshWithEdges';
+import { getThroughWallMounts } from './openingMounts3D';
+import { OverlayMesh, SolidBoxWithEdges } from './MeshWithEdges';
 
-function DoorMeshContent({
+const RO = 10;
+
+/** 门：套线贯穿墙厚，门头线内外各一层，门扇仅开向侧 */
+function DoorAssembly3D({
   width,
   height,
-  thickness,
-  innerSign,
+  inner,
+  outer,
+  innerPush,
+  outerPush,
+  mid,
+  span,
+  leafOnInner,
 }: {
   width: number;
   height: number;
-  thickness: number;
-  innerSign: number;
+  inner: number;
+  outer: number;
+  innerPush: number;
+  outerPush: number;
+  mid: number;
+  span: number;
+  leafOnInner: boolean;
 }) {
   const trim = 0.06;
   const frameW = width + trim * 2;
   const frameH = height + trim;
-  const frameDepth = 0.055;
+  const fd = 0.055;
+  const headH = 0.06;
+  const headW = frameW + 0.06;
+  const jambW = trim;
+  const casing = { doubleSided: true as const, renderOrder: RO };
+
+  const leafFace = leafOnInner ? inner : outer;
+  const leafPush = leafOnInner ? innerPush : outerPush;
   const panelW = width * 0.9;
   const panelH = height * 0.94;
   const panelThick = 0.04;
-  const faceZ = innerSign * (thickness * 0.5 + frameDepth * 0.45);
+  const panelZ = leafFace + leafPush * (fd * 0.4 + panelThick / 2);
 
   return (
     <group>
+      {/* 左/右/上/下套线 — 贯穿墙厚 */}
       <SolidBoxWithEdges
-        size={[frameW, frameH, frameDepth]}
+        size={[jambW, frameH, span]}
         color={ARCH_COLORS.doorFrame}
         roughness={0.55}
-        position={[0, 0, faceZ]}
+        position={[-width / 2 - jambW / 2, 0, mid]}
+        {...casing}
+      />
+      <SolidBoxWithEdges
+        size={[jambW, frameH, span]}
+        color={ARCH_COLORS.doorFrame}
+        roughness={0.55}
+        position={[width / 2 + jambW / 2, 0, mid]}
+        {...casing}
+      />
+      <SolidBoxWithEdges
+        size={[frameW, trim, span]}
+        color={ARCH_COLORS.doorFrame}
+        roughness={0.55}
+        position={[0, height / 2 + trim / 2, mid]}
+        {...casing}
+      />
+      <SolidBoxWithEdges
+        size={[frameW, trim * 0.85, span]}
+        color={ARCH_COLORS.doorFrame}
+        roughness={0.55}
+        position={[0, -height / 2 - trim * 0.42, mid]}
+        {...casing}
       />
 
+      {/* 内外门头线 */}
+      <SolidBoxWithEdges
+        size={[headW, headH, fd]}
+        color={ARCH_COLORS.doorFrame}
+        roughness={0.5}
+        position={[0, height / 2 + trim + headH / 2, inner + innerPush * fd * 0.55]}
+        {...casing}
+      />
+      <SolidBoxWithEdges
+        size={[headW, headH, fd]}
+        color={ARCH_COLORS.doorFrame}
+        roughness={0.5}
+        position={[0, height / 2 + trim + headH / 2, outer + outerPush * fd * 0.55]}
+        {...casing}
+      />
+
+      {/* 门扇 + 执手 */}
       <SolidBoxWithEdges
         size={[panelW, panelH, panelThick]}
         color={ARCH_COLORS.doorPanel}
         roughness={0.5}
-        position={[0, -height * 0.02, faceZ + innerSign * frameDepth * 0.35]}
+        position={[0, -height * 0.02, panelZ]}
+        doubleSided
+        renderOrder={RO}
       />
-
-      <mesh
-        position={[0, panelH * 0.22, faceZ + innerSign * (frameDepth * 0.35 + panelThick * 0.52)]}
+      <OverlayMesh
+        position={[0, panelH * 0.22, panelZ + leafPush * panelThick * 0.52]}
+        color={ARCH_COLORS.doorPanelRecess}
+        roughness={0.65}
+        doubleSided
+        renderOrder={RO}
       >
         <boxGeometry args={[panelW * 0.78, panelH * 0.38, 0.008]} />
-        <meshStandardMaterial color={ARCH_COLORS.doorPanelRecess} roughness={0.65} />
-      </mesh>
-      <mesh
-        position={[0, -panelH * 0.2, faceZ + innerSign * (frameDepth * 0.35 + panelThick * 0.52)]}
+      </OverlayMesh>
+      <OverlayMesh
+        position={[0, -panelH * 0.2, panelZ + leafPush * panelThick * 0.52]}
+        color={ARCH_COLORS.doorPanelRecess}
+        roughness={0.65}
+        doubleSided
+        renderOrder={RO}
       >
         <boxGeometry args={[panelW * 0.78, panelH * 0.28, 0.008]} />
-        <meshStandardMaterial color={ARCH_COLORS.doorPanelRecess} roughness={0.65} />
-      </mesh>
-
-      <mesh
-        position={[panelW * 0.32, 0, faceZ + innerSign * (frameDepth * 0.35 + panelThick + 0.02)]}
-        castShadow
+      </OverlayMesh>
+      <OverlayMesh
+        position={[panelW * 0.32, 0, panelZ + leafPush * (panelThick / 2 + 0.04)]}
+        color={ARCH_COLORS.handle}
+        roughness={0.3}
+        metalness={0.7}
+        renderOrder={RO}
       >
         <boxGeometry args={[0.1, 0.035, 0.03]} />
-        <meshStandardMaterial color={ARCH_COLORS.handle} roughness={0.3} metalness={0.7} />
-      </mesh>
-      <mesh
-        position={[panelW * 0.32, 0, faceZ + innerSign * (frameDepth * 0.35 + panelThick + 0.055)]}
-        castShadow
+      </OverlayMesh>
+      <OverlayMesh
+        position={[panelW * 0.32, 0, panelZ + leafPush * (panelThick / 2 + 0.075)]}
+        color={ARCH_COLORS.handle}
+        roughness={0.25}
+        metalness={0.75}
+        renderOrder={RO}
       >
         <boxGeometry args={[0.018, 0.12, 0.018]} />
-        <meshStandardMaterial color={ARCH_COLORS.handle} roughness={0.25} metalness={0.75} />
-      </mesh>
+      </OverlayMesh>
     </group>
   );
 }
 
-function WindowMeshContent({ width, height, thickness }: { width: number; height: number; thickness: number }) {
-  const frameThick = 0.06;
-  const sillH = 0.04;
-  const sillOut = 0.03;
+/** 窗：厚黑外框 + 双扇内框 + 竖梃 + 半透明玻璃（对齐参考图） */
+function WindowPane3D({
+  centerX,
+  paneW,
+  innerH,
+  mid,
+  innerDepth,
+  glassDepth,
+}: {
+  centerX: number;
+  paneW: number;
+  innerH: number;
+  mid: number;
+  innerDepth: number;
+  glassDepth: number;
+}) {
+  const innerFt = 0.032;
+  const glassW = paneW - innerFt * 2;
+  const glassH = innerH - innerFt * 2;
+  const frame = {
+    color: ARCH_COLORS.windowInnerFrame,
+    roughness: 0.38,
+    metalness: 0.12,
+    hideEdges: true,
+    renderOrder: RO,
+  } as const;
 
   return (
     <group>
       <SolidBoxWithEdges
-        size={[width, height, thickness]}
-        color={ARCH_COLORS.windowFrame}
-        roughness={0.45}
-        metalness={0.08}
-        edgeColor={ARCH_COLORS.windowFrame}
+        size={[innerFt, innerH, innerDepth]}
+        position={[centerX - paneW / 2 + innerFt / 2, 0, mid]}
+        {...frame}
       />
-
-      <mesh>
-        <boxGeometry args={[width - frameThick * 2, height - frameThick * 2, thickness * 0.35]} />
+      <SolidBoxWithEdges
+        size={[innerFt, innerH, innerDepth]}
+        position={[centerX + paneW / 2 - innerFt / 2, 0, mid]}
+        {...frame}
+      />
+      <SolidBoxWithEdges
+        size={[paneW, innerFt, innerDepth]}
+        position={[centerX, innerH / 2 - innerFt / 2, mid]}
+        {...frame}
+      />
+      <SolidBoxWithEdges
+        size={[paneW, innerFt, innerDepth]}
+        position={[centerX, -innerH / 2 + innerFt / 2, mid]}
+        {...frame}
+      />
+      <mesh position={[centerX, 0, mid]} renderOrder={RO + 1}>
+        <boxGeometry args={[glassW, glassH, glassDepth]} />
         <meshStandardMaterial
           color={ARCH_COLORS.windowGlass}
-          roughness={0.08}
-          metalness={0.15}
+          roughness={0.06}
+          metalness={0.04}
           transparent
-          opacity={0.72}
+          opacity={ARCH_COLORS.windowGlassOpacity}
+          depthWrite={false}
         />
       </mesh>
+    </group>
+  );
+}
 
-      <mesh>
-        <boxGeometry args={[frameThick * 0.65, height - frameThick * 1.4, thickness * 0.5]} />
-        <meshStandardMaterial color={ARCH_COLORS.windowFrame} roughness={0.4} metalness={0.1} />
-      </mesh>
+function WindowAssembly3D({
+  width,
+  height,
+  mid,
+  span,
+}: {
+  width: number;
+  height: number;
+  mid: number;
+  span: number;
+}) {
+  const outerFt = 0.09;
+  const mullionW = 0.05;
+  const innerW = width - outerFt * 2;
+  const innerH = height - outerFt * 2;
+  const paneW = (innerW - mullionW) / 2;
+  const leftX = -(mullionW / 2 + paneW / 2);
+  const rightX = mullionW / 2 + paneW / 2;
+  const outerFrame = {
+    color: ARCH_COLORS.windowFrame,
+    roughness: 0.32,
+    metalness: 0.15,
+    hideEdges: true,
+    renderOrder: RO,
+  } as const;
+  const innerDepth = span * 0.78;
+  const glassDepth = span * 0.14;
 
+  return (
+    <group>
+      {/* 外框：左 / 右 / 上 / 下 */}
       <SolidBoxWithEdges
-        size={[width + 0.04, sillH, thickness * 0.55]}
+        size={[outerFt, height, span]}
+        position={[-width / 2 + outerFt / 2, 0, mid]}
+        {...outerFrame}
+      />
+      <SolidBoxWithEdges
+        size={[outerFt, height, span]}
+        position={[width / 2 - outerFt / 2, 0, mid]}
+        {...outerFrame}
+      />
+      <SolidBoxWithEdges
+        size={[width, outerFt, span]}
+        position={[0, height / 2 - outerFt / 2, mid]}
+        {...outerFrame}
+      />
+      <SolidBoxWithEdges
+        size={[width, outerFt, span]}
+        position={[0, -height / 2 + outerFt / 2, mid]}
+        {...outerFrame}
+      />
+      {/* 中梃 */}
+      <SolidBoxWithEdges
+        size={[mullionW, innerH, span * 0.82]}
         color={ARCH_COLORS.windowFrame}
-        roughness={0.45}
-        metalness={0.08}
-        edgeColor={ARCH_COLORS.windowFrame}
-        position={[0, -height / 2 - sillH / 2, thickness * 0.15 + sillOut]}
+        roughness={0.32}
+        metalness={0.15}
+        hideEdges
+        position={[0, 0, mid]}
+        renderOrder={RO}
+      />
+      {/* 双扇内框 + 玻璃 */}
+      <WindowPane3D
+        centerX={leftX}
+        paneW={paneW}
+        innerH={innerH}
+        mid={mid}
+        innerDepth={innerDepth}
+        glassDepth={glassDepth}
+      />
+      <WindowPane3D
+        centerX={rightX}
+        paneW={paneW}
+        innerH={innerH}
+        mid={mid}
+        innerDepth={innerDepth}
+        glassDepth={glassDepth}
       />
     </group>
   );
 }
 
-function OpeningPassageContent({ width, height, thickness }: { width: number; height: number; thickness: number }) {
-  const jamb = 0.04;
-  const topH = 0.05;
+function OpeningPassageReveal({
+  width,
+  height,
+  thickness,
+}: {
+  width: number;
+  height: number;
+  thickness: number;
+}) {
+  const jamb = 0.045;
+  const topH = 0.045;
   const sillH = 0.035;
 
   return (
@@ -125,35 +307,45 @@ function OpeningPassageContent({ width, height, thickness }: { width: number; he
         size={[jamb, height, thickness]}
         color={ARCH_COLORS.jamb}
         position={[-width / 2 + jamb / 2, 0, 0]}
+        renderOrder={RO}
       />
       <SolidBoxWithEdges
         size={[jamb, height, thickness]}
         color={ARCH_COLORS.jamb}
         position={[width / 2 - jamb / 2, 0, 0]}
+        renderOrder={RO}
       />
       <SolidBoxWithEdges
         size={[width, topH, thickness]}
         color={ARCH_COLORS.jamb}
         position={[0, height / 2 - topH / 2, 0]}
+        renderOrder={RO}
       />
-      <mesh position={[0, -height / 2 + sillH / 2, thickness * 0.22]}>
-        <boxGeometry args={[width, sillH, thickness * 0.75]} />
-        <meshStandardMaterial color={ARCH_COLORS.threshold} roughness={0.75} metalness={0.05} />
-      </mesh>
+      <OverlayMesh
+        position={[0, -height / 2 + sillH / 2, thickness * 0.18]}
+        color={ARCH_COLORS.threshold}
+        roughness={0.75}
+        metalness={0.05}
+        renderOrder={RO}
+      >
+        <boxGeometry args={[width, sillH, thickness * 0.72]} />
+      </OverlayMesh>
     </group>
   );
 }
 
 export function DoorMesh3D({ wall, opening }: { wall: WallSegment; opening: Opening }) {
   const layout = useMemo(() => getOpeningLayout3D(wall, opening), [wall, opening]);
+  const mounts = useMemo(() => getThroughWallMounts(layout, 0.055), [layout]);
+  const leafOnInner = !opening.flip;
 
   return (
-    <group position={layout.position} rotation={layout.rotation}>
-      <DoorMeshContent
+    <group position={layout.position} rotation={layout.rotation} renderOrder={RO}>
+      <DoorAssembly3D
         width={layout.width}
         height={layout.height}
-        thickness={layout.thickness}
-        innerSign={layout.innerSign}
+        leafOnInner={leafOnInner}
+        {...mounts}
       />
     </group>
   );
@@ -161,14 +353,11 @@ export function DoorMesh3D({ wall, opening }: { wall: WallSegment; opening: Open
 
 export function WindowMesh3D({ wall, opening }: { wall: WallSegment; opening: Opening }) {
   const layout = useMemo(() => getOpeningLayout3D(wall, opening), [wall, opening]);
+  const { mid, span } = useMemo(() => getThroughWallMounts(layout, 0.055), [layout]);
 
   return (
-    <group position={layout.position} rotation={layout.rotation}>
-      <WindowMeshContent
-        width={layout.width}
-        height={layout.height}
-        thickness={layout.thickness}
-      />
+    <group position={layout.position} rotation={layout.rotation} renderOrder={RO}>
+      <WindowAssembly3D width={layout.width} height={layout.height} mid={mid} span={span} />
     </group>
   );
 }
@@ -177,8 +366,8 @@ export function OpeningPassageMesh3D({ wall, opening }: { wall: WallSegment; ope
   const layout = useMemo(() => getOpeningLayout3D(wall, opening), [wall, opening]);
 
   return (
-    <group position={layout.position} rotation={layout.rotation}>
-      <OpeningPassageContent
+    <group position={layout.position} rotation={layout.rotation} renderOrder={RO}>
+      <OpeningPassageReveal
         width={layout.width}
         height={layout.height}
         thickness={layout.thickness}

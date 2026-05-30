@@ -18,9 +18,10 @@ export function PreviewViewport() {
     <div className="preview-viewport">
       <Canvas shadows camera={{ position: [8, 10, 8], fov: 45 }}>
         <color attach="background" args={['#ffffff']} />
-        <ambientLight intensity={Math.max(ambientIntensity, 0.65)} />
-        <directionalLight position={[12, 18, 8]} intensity={0.95} castShadow />
-        <directionalLight position={[-6, 10, -4]} intensity={0.35} />
+        <ambientLight intensity={Math.max(ambientIntensity, 0.85)} />
+        <directionalLight position={[12, 18, 8]} intensity={0.75} castShadow />
+        <directionalLight position={[-8, 12, -6]} intensity={0.45} />
+        <hemisphereLight args={['#ffffff', '#e2e8f0', 0.5]} />
 
         <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
           <planeGeometry args={[30, 30]} />

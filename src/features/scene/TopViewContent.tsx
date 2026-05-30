@@ -1,5 +1,6 @@
 import { Grid } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
+import { WallMeshLayer } from '@/features/floorPlan/WallMeshLayer';
 import { useSceneStore } from '@/stores/sceneStore';
 import { SceneObject } from './SceneObject';
 import { FixedTopDownCamera } from './FixedTopDownCamera';
@@ -12,6 +13,8 @@ export function TopViewContent() {
   const gridVisible = useSceneStore((s) => s.document.settings.gridVisible);
   const gridSize = useSceneStore((s) => s.document.settings.gridSize);
   const ambientIntensity = useSceneStore((s) => s.document.settings.ambientIntensity);
+  const floorPlan = useSceneStore((s) => s.document.floorPlan);
+  const floorPlanSelection = useSceneStore((s) => s.floorPlanSelection);
   const setSelection = useSceneStore((s) => s.setSelection);
   const setHoveredEntity = useSceneStore((s) => s.setHoveredEntity);
 
@@ -47,6 +50,16 @@ export function TopViewContent() {
         <planeGeometry args={[TOP_VIEW_WORLD_SPAN, TOP_VIEW_WORLD_SPAN]} />
         <meshBasicMaterial visible={false} />
       </mesh>
+
+      {floorPlan && (
+        <WallMeshLayer
+          walls={floorPlan.walls}
+          wallIds={floorPlan.wallIds}
+          openings={floorPlan.openings}
+          openingIds={floorPlan.openingIds}
+          selection={floorPlanSelection}
+        />
+      )}
 
       {rootIds.map((id) => {
         const entity = entities[id];

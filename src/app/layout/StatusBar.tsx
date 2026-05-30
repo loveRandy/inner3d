@@ -43,7 +43,7 @@ export function StatusBar() {
       )}
       {isFloorPlan && (
         <span className="status-bar__hint">
-          左键落点 · 右键/Esc 结束画墙 · Shift 正交 · 空格 切换定位线
+          左键落点 · 滚轮缩放 · 右键拖动画布 · 画墙时右键/Esc 结束 · Shift 正交 · 空格 切换定位线
         </span>
       )}
     </footer>

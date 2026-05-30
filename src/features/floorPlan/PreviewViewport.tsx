@@ -1,5 +1,5 @@
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { Grid, OrbitControls } from '@react-three/drei';
 import { useSceneStore } from '@/stores/sceneStore';
 import { SceneObject } from '@/features/scene/SceneObject';
 import { WallMeshLayer } from './WallMeshLayer';
@@ -10,6 +10,7 @@ export function PreviewViewport() {
   const floorPlan = useSceneStore((s) => s.document.floorPlan);
   const floorPlanSelection = useSceneStore((s) => s.floorPlanSelection);
   const gridSize = useSceneStore((s) => s.document.settings.gridSize);
+  const gridVisible = useSceneStore((s) => s.document.settings.gridVisible);
   const ambientIntensity = useSceneStore((s) => s.document.settings.ambientIntensity);
 
   if (!floorPlan) return null;
@@ -28,7 +29,19 @@ export function PreviewViewport() {
           <meshStandardMaterial color="#f1f5f9" />
         </mesh>
 
-        <gridHelper args={[30, Math.round(30 / gridSize), '#cbd5e1', '#e2e8f0']} />
+        {gridVisible && (
+          <Grid
+            args={[20, 20]}
+            cellSize={gridSize}
+            cellThickness={0.6}
+            cellColor="#cbd5e1"
+            sectionSize={gridSize * 5}
+            sectionThickness={1}
+            sectionColor="#94a3b8"
+            fadeDistance={40}
+            infiniteGrid
+          />
+        )}
 
         <WallMeshLayer
           walls={floorPlan.walls}

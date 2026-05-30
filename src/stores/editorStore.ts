@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { MaterialOverride, MaterialPresetId, MeshPartKey } from '@/types/scene';
 import type { FloorPlanTool, Vec2 } from '@/types/floorPlan';
+import { clampFloorPlanZoom } from '@/lib/floorPlan/canvasView';
 import { useSceneRefsStore } from '@/stores/sceneRefsStore';
 import { useSceneStore } from '@/stores/sceneStore';
 import { getAssetById } from '@/features/assets';
@@ -31,6 +32,8 @@ interface EditorState {
   rectDrawStart: Vec2 | null;
   rectDrawPreview: Vec2 | null;
   floorPlanZoom: number;
+  floorPlanPanX: number;
+  floorPlanPanZ: number;
   clearConfirmOpen: boolean;
   saveMessage: string | null;
   isTransformDragging: boolean;
@@ -43,6 +46,8 @@ interface EditorState {
   setRectDrawStart: (point: Vec2 | null) => void;
   setRectDrawPreview: (point: Vec2 | null) => void;
   setFloorPlanZoom: (zoom: number) => void;
+  setFloorPlanPan: (panX: number, panZ: number) => void;
+  setFloorPlanView: (zoom: number, panX: number, panZ: number) => void;
   resetFloorPlanDrawState: () => void;
   setClearConfirmOpen: (open: boolean) => void;
   setSaveMessage: (message: string | null) => void;
@@ -65,6 +70,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   rectDrawStart: null,
   rectDrawPreview: null,
   floorPlanZoom: 1,
+  floorPlanPanX: 0,
+  floorPlanPanZ: 0,
   clearConfirmOpen: false,
   saveMessage: null,
   isTransformDragging: false,
@@ -103,7 +110,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setWallDrawPreview: (point) => set({ wallDrawPreview: point }),
   setRectDrawStart: (point) => set({ rectDrawStart: point }),
   setRectDrawPreview: (point) => set({ rectDrawPreview: point }),
-  setFloorPlanZoom: (zoom) => set({ floorPlanZoom: Math.max(0.25, Math.min(4, zoom)) }),
+  setFloorPlanZoom: (zoom) => set({ floorPlanZoom: clampFloorPlanZoom(zoom) }),
+
+  setFloorPlanPan: (panX, panZ) => set({ floorPlanPanX: panX, floorPlanPanZ: panZ }),
+
+  setFloorPlanView: (zoom, panX, panZ) =>
+    set({
+      floorPlanZoom: clampFloorPlanZoom(zoom),
+      floorPlanPanX: panX,
+      floorPlanPanZ: panZ,
+    }),
 
   resetFloorPlanDrawState: () =>
     set({

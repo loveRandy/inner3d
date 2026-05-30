@@ -9,10 +9,13 @@ import {
   createUpdateWallEndpointCommand,
 } from '@/lib/commands';
 import {
+  buildVisibleGridLines,
   createDefaultViewState,
   formatLengthMm,
+  panViewByScreenDelta,
   screenToWorld,
   worldToScreen,
+  zoomViewAtScreen,
   type CanvasViewState,
 } from '@/lib/floorPlan/canvasView';
 import { findWallAtPoint } from '@/lib/floorPlan/openingPlacement';
@@ -35,6 +38,7 @@ import {
 import type { FloorPlanSelectionKind, FloorPlanSettings, Vec2, WallSegment } from '@/types/floorPlan';
 
 const MIN_WALL_LENGTH = 0.05;
+const WHEEL_ZOOM_SENSITIVITY = 0.001;
 
 function buildPreviewWall(
   start: Vec2,
@@ -81,6 +85,13 @@ export function FloorPlanCanvas() {
     wallId: string;
     opening: Opening;
   } | null>(null);
+  const [panDrag, setPanDrag] = useState<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startPanX: number;
+    startPanZ: number;
+  } | null>(null);
 
   const floorPlan = useSceneStore((s) => s.document.floorPlan);
   const gridSize = useSceneStore((s) => s.document.settings.gridSize);
@@ -92,6 +103,9 @@ export function FloorPlanCanvas() {
 
   const floorPlanTool = useEditorStore((s) => s.floorPlanTool);
   const floorPlanZoom = useEditorStore((s) => s.floorPlanZoom);
+  const floorPlanPanX = useEditorStore((s) => s.floorPlanPanX);
+  const floorPlanPanZ = useEditorStore((s) => s.floorPlanPanZ);
+  const setFloorPlanPan = useEditorStore((s) => s.setFloorPlanPan);
   const wallDrawStart = useEditorStore((s) => s.wallDrawStart);
   const wallDrawPreview = useEditorStore((s) => s.wallDrawPreview);
   const rectDrawStart = useEditorStore((s) => s.rectDrawStart);
@@ -109,8 +123,10 @@ export function FloorPlanCanvas() {
     () => ({
       ...createDefaultViewState(size.width, size.height),
       zoom: floorPlanZoom,
+      panX: floorPlanPanX,
+      panZ: floorPlanPanZ,
     }),
-    [size.width, size.height, floorPlanZoom],
+    [size.width, size.height, floorPlanZoom, floorPlanPanX, floorPlanPanZ],
   );
 
   useEffect(() => {
@@ -134,6 +150,41 @@ export function FloorPlanCanvas() {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
     };
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const { floorPlanZoom, floorPlanPanX, floorPlanPanZ, setFloorPlanView: applyView } =
+        useEditorStore.getState();
+
+      const currentView: CanvasViewState = {
+        ...createDefaultViewState(el.clientWidth, el.clientHeight),
+        zoom: floorPlanZoom,
+        panX: floorPlanPanX,
+        panZ: floorPlanPanZ,
+      };
+      const factor = Math.exp(-e.deltaY * WHEEL_ZOOM_SENSITIVITY);
+      const next = zoomViewAtScreen(
+        currentView,
+        floorPlanPanX,
+        floorPlanPanZ,
+        floorPlanZoom,
+        sx,
+        sy,
+        floorPlanZoom * factor,
+      );
+      applyView(next.zoom, next.panX, next.panZ);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
   const resolvePoint = useCallback(
@@ -217,16 +268,28 @@ export function FloorPlanCanvas() {
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!floorPlan) return;
+
+    if (e.button === 2) {
+      if (floorPlanTool === 'wall' && wallDrawStart) {
+        resetFloorPlanDrawState();
+        setAlignGuides(null);
+        return;
+      }
+      e.preventDefault();
+      setPanDrag({
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startPanX: floorPlanPanX,
+        startPanZ: floorPlanPanZ,
+      });
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      return;
+    }
+
     const point = resolvePoint(e.clientX, e.clientY);
 
     if (floorPlanTool === 'wall') {
-      if (e.button === 2) {
-        if (wallDrawStart) {
-          resetFloorPlanDrawState();
-          setAlignGuides(null);
-        }
-        return;
-      }
       if (e.button !== 0) return;
 
       if (!wallDrawStart) {
@@ -286,6 +349,19 @@ export function FloorPlanCanvas() {
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!floorPlan) return;
+
+    if (panDrag && panDrag.pointerId === e.pointerId) {
+      const next = panViewByScreenDelta(
+        panDrag.startPanX,
+        panDrag.startPanZ,
+        view,
+        e.clientX - panDrag.startX,
+        e.clientY - panDrag.startY,
+      );
+      setFloorPlanPan(next.panX, next.panZ);
+      return;
+    }
+
     const point = resolvePoint(e.clientX, e.clientY);
 
     if (dragEndpoint) {
@@ -326,7 +402,18 @@ export function FloorPlanCanvas() {
     }
   };
 
+  const endPanDrag = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!panDrag || panDrag.pointerId !== e.pointerId) return;
+    (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+    setPanDrag(null);
+  };
+
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (panDrag && panDrag.pointerId === e.pointerId) {
+      endPanDrag(e);
+      return;
+    }
+
     if (!floorPlan) return;
     const point = resolvePoint(e.clientX, e.clientY);
 
@@ -367,31 +454,22 @@ export function FloorPlanCanvas() {
       ? buildScreenGuideLines(alignGuides, view)
       : [];
 
-  const gridLines: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  if (gridVisible) {
-    const span = view.worldSpan / 2;
-    for (let i = -span; i <= span; i += gridSize) {
-      const a = worldToScreen({ x: i, z: -span }, view);
-      const b = worldToScreen({ x: i, z: span }, view);
-      const c = worldToScreen({ x: -span, z: i }, view);
-      const d = worldToScreen({ x: span, z: i }, view);
-      gridLines.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
-      gridLines.push({ x1: c.x, y1: c.y, x2: d.x, y2: d.y });
-    }
-  }
+  const gridLines = gridVisible ? buildVisibleGridLines(view, gridSize) : [];
+  const isPanning = panDrag !== null;
 
   return (
     <div ref={containerRef} className="floor-plan-canvas">
       <svg
         width={size.width}
         height={size.height}
-        className={`floor-plan-canvas__svg${isWallDrawing ? ' floor-plan-canvas__svg--drawing-wall' : ''}`}
+        className={`floor-plan-canvas__svg${isWallDrawing ? ' floor-plan-canvas__svg--drawing-wall' : ''}${isPanning ? ' floor-plan-canvas__svg--panning' : ''}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={endPanDrag}
         onContextMenu={(e) => {
+          e.preventDefault();
           if (floorPlanTool === 'wall' && wallDrawStart) {
-            e.preventDefault();
             resetFloorPlanDrawState();
             setAlignGuides(null);
           }
@@ -402,9 +480,12 @@ export function FloorPlanCanvas() {
         {gridLines.map((line, i) => (
           <line
             key={i}
-            {...line}
-            stroke="#cbd5e1"
-            strokeWidth={1}
+            x1={line.x1}
+            y1={line.y1}
+            x2={line.x2}
+            y2={line.y2}
+            stroke={line.major ? '#94a3b8' : '#cbd5e1'}
+            strokeWidth={line.major ? 1 : 0.5}
           />
         ))}
 

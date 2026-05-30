@@ -36,6 +36,106 @@ export function screenToWorld(sx: number, sy: number, view: CanvasViewState): Ve
   };
 }
 
+export function getViewScale(view: CanvasViewState): number {
+  return (Math.min(view.width, view.height) / view.worldSpan) * view.zoom;
+}
+
+export const FLOOR_PLAN_ZOOM_MIN = 0.25;
+export const FLOOR_PLAN_ZOOM_MAX = 4;
+
+export function clampFloorPlanZoom(zoom: number): number {
+  return Math.max(FLOOR_PLAN_ZOOM_MIN, Math.min(FLOOR_PLAN_ZOOM_MAX, zoom));
+}
+
+/** 以屏幕坐标为锚点缩放，保持鼠标下的世界点位置不变 */
+export function zoomViewAtScreen(
+  view: CanvasViewState,
+  panX: number,
+  panZ: number,
+  zoom: number,
+  screenX: number,
+  screenY: number,
+  nextZoom: number,
+): { panX: number; panZ: number; zoom: number } {
+  const clampedZoom = clampFloorPlanZoom(nextZoom);
+  if (clampedZoom === zoom) return { panX, panZ, zoom };
+
+  const anchor = screenToWorld(screenX, screenY, { ...view, zoom, panX, panZ });
+  const newScale = getViewScale({ ...view, zoom: clampedZoom });
+  return {
+    zoom: clampedZoom,
+    panX: anchor.x - (screenX - view.width / 2) / newScale,
+    panZ: anchor.z - (screenY - view.height / 2) / newScale,
+  };
+}
+
+export function panViewByScreenDelta(
+  panX: number,
+  panZ: number,
+  view: CanvasViewState,
+  screenDx: number,
+  screenDy: number,
+): { panX: number; panZ: number } {
+  const scale = getViewScale(view);
+  return {
+    panX: panX - screenDx / scale,
+    panZ: panZ - screenDy / scale,
+  };
+}
+
+export interface ScreenLine {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+export interface GridLine extends ScreenLine {
+  major: boolean;
+}
+
+function isMajorGridLine(value: number, sectionSize: number): boolean {
+  if (sectionSize <= 0) return false;
+  const n = value / sectionSize;
+  return Math.abs(n - Math.round(n)) < 1e-4;
+}
+
+/** 根据当前视口生成可见范围内的网格线（与 3D Grid 的 cellSize / sectionSize 一致） */
+export function buildVisibleGridLines(
+  view: CanvasViewState,
+  gridSize: number,
+  sectionSize = gridSize * 5,
+  paddingWorld = 1,
+): GridLine[] {
+  if (gridSize <= 0) return [];
+
+  const topLeft = screenToWorld(0, 0, view);
+  const bottomRight = screenToWorld(view.width, view.height, view);
+
+  const minX = Math.min(topLeft.x, bottomRight.x) - paddingWorld;
+  const maxX = Math.max(topLeft.x, bottomRight.x) + paddingWorld;
+  const minZ = Math.min(topLeft.z, bottomRight.z) - paddingWorld;
+  const maxZ = Math.max(topLeft.z, bottomRight.z) + paddingWorld;
+
+  const startX = Math.floor(minX / gridSize) * gridSize;
+  const endX = Math.ceil(maxX / gridSize) * gridSize;
+  const startZ = Math.floor(minZ / gridSize) * gridSize;
+  const endZ = Math.ceil(maxZ / gridSize) * gridSize;
+
+  const lines: GridLine[] = [];
+  for (let x = startX; x <= endX + gridSize * 0.001; x += gridSize) {
+    const a = worldToScreen({ x, z: minZ }, view);
+    const b = worldToScreen({ x, z: maxZ }, view);
+    lines.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, major: isMajorGridLine(x, sectionSize) });
+  }
+  for (let z = startZ; z <= endZ + gridSize * 0.001; z += gridSize) {
+    const a = worldToScreen({ x: minX, z }, view);
+    const b = worldToScreen({ x: maxX, z }, view);
+    lines.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, major: isMajorGridLine(z, sectionSize) });
+  }
+  return lines;
+}
+
 export function formatLengthMm(meters: number): string {
   return `${Math.round(meters * 1000)}`;
 }

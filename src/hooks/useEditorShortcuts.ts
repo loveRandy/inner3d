@@ -23,9 +23,7 @@ export function useEditorShortcuts() {
   const floorPlanSelection = useSceneStore((s) => s.floorPlanSelection);
   const editorMode = useEditorStore((s) => s.editorMode);
   const setFloorPlanTool = useEditorStore((s) => s.setFloorPlanTool);
-  const resetFloorPlanDrawState = useEditorStore((s) => s.resetFloorPlanDrawState);
-  const floorPlanTool = useEditorStore((s) => s.floorPlanTool);
-  const wallDrawStart = useEditorStore((s) => s.wallDrawStart);
+  const cancelFloorPlanTool = useEditorStore((s) => s.cancelFloorPlanTool);
   const floorPlan = useSceneStore((s) => s.document.floorPlan);
 
   useEffect(() => {
@@ -47,12 +45,8 @@ export function useEditorShortcuts() {
 
       if (editorMode === 'floorPlan') {
         if (e.key === 'Escape') {
-          if (floorPlanTool === 'wall' && wallDrawStart) {
-            resetFloorPlanDrawState();
-          } else {
-            resetFloorPlanDrawState();
-            useSceneStore.getState().setFloorPlanSelection([]);
-          }
+          e.preventDefault();
+          cancelFloorPlanTool();
           return;
         }
 
@@ -104,9 +98,7 @@ export function useEditorShortcuts() {
     floorPlanSelection,
     editorMode,
     setFloorPlanTool,
-    resetFloorPlanDrawState,
-    floorPlanTool,
-    wallDrawStart,
+    cancelFloorPlanTool,
     floorPlan,
   ]);
 }

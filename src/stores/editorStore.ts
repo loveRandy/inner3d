@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { MaterialOverride, MaterialPresetId, MeshPartKey } from '@/types/scene';
 import type { FloorPlanTool, Vec2 } from '@/types/floorPlan';
 import { clampFloorPlanZoom } from '@/lib/floorPlan/canvasView';
+import { isFloorPlanDrawingInProgress } from '@/lib/floorPlan/floorPlanToolState';
 import { useSceneRefsStore } from '@/stores/sceneRefsStore';
 import { useSceneStore } from '@/stores/sceneStore';
 import { getAssetById } from '@/features/assets';
@@ -49,6 +50,7 @@ interface EditorState {
   setFloorPlanPan: (panX: number, panZ: number) => void;
   setFloorPlanView: (zoom: number, panX: number, panZ: number) => void;
   resetFloorPlanDrawState: () => void;
+  cancelFloorPlanTool: () => void;
   setClearConfirmOpen: (open: boolean) => void;
   setSaveMessage: (message: string | null) => void;
   setTransformDragging: (dragging: boolean) => void;
@@ -128,6 +130,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       rectDrawStart: null,
       rectDrawPreview: null,
     }),
+
+  cancelFloorPlanTool: () => {
+    const state = get();
+    if (
+      isFloorPlanDrawingInProgress({
+        floorPlanTool: state.floorPlanTool,
+        wallDrawStart: state.wallDrawStart,
+        rectDrawStart: state.rectDrawStart,
+      })
+    ) {
+      state.resetFloorPlanDrawState();
+      return;
+    }
+    if (state.floorPlanTool !== 'select') {
+      state.setFloorPlanTool('select');
+      return;
+    }
+    const scene = useSceneStore.getState();
+    if (scene.floorPlanSelection.length > 0 || scene.selectedIds.length > 0) {
+      scene.setFloorPlanSelection([]);
+      scene.setSelection([]);
+    }
+  },
 
   setClearConfirmOpen: (open) => set({ clearConfirmOpen: open }),
   setSaveMessage: (message) => set({ saveMessage: message }),

@@ -43,7 +43,7 @@ export function StatusBar() {
       )}
       {isFloorPlan && (
         <span className="status-bar__hint">
-          左键落点 · 滚轮缩放 · 右键拖动画布 · 选择工具下点击选中门窗 · Delete 删除 · 长按拖动门窗 · Shift 正交 · 空格 切换定位线
+          左键落点 · Esc/右键取消绘制 · 再按切选择 · 右键拖动平移 · 滚轮缩放 · Delete 删除 · 长按拖动门窗 · Shift 正交 · 空格 切换定位线
         </span>
       )}
     </footer>

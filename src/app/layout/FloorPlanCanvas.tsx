@@ -32,6 +32,7 @@ import { WallAnnotations2D } from '@/features/floorPlan/WallAnnotations2D';
 import { pickEntityAtPoint } from '@/lib/floorPlan/modelPick';
 import { cloneTransform } from '@/lib/transform/worldTransform';
 import {
+  isFloorPlanDrawingInProgress,
   shouldShowWallAnnotations,
 } from '@/lib/floorPlan/floorPlanToolState';
 import type { Opening } from '@/types/floorPlan';
@@ -52,6 +53,7 @@ const MIN_WALL_LENGTH = 0.05;
 const WHEEL_ZOOM_SENSITIVITY = 0.001;
 const OPENING_LONG_PRESS_MS = 450;
 const OPENING_LONG_PRESS_MOVE_TOLERANCE = 8;
+const RIGHT_DRAG_THRESHOLD = 5;
 
 function buildPreviewWall(
   start: Vec2,
@@ -118,6 +120,12 @@ export function FloorPlanCanvas() {
     startClientY: number;
   } | null>(null);
   const openingLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rightPointerRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    panning: boolean;
+  } | null>(null);
   const [entityDrag, setEntityDrag] = useState<{
     entityId: string;
     pointerId: number;
@@ -156,6 +164,7 @@ export function FloorPlanCanvas() {
   const setRectDrawStart = useEditorStore((s) => s.setRectDrawStart);
   const setRectDrawPreview = useEditorStore((s) => s.setRectDrawPreview);
   const resetFloorPlanDrawState = useEditorStore((s) => s.resetFloorPlanDrawState);
+  const cancelFloorPlanTool = useEditorStore((s) => s.cancelFloorPlanTool);
   const settings = floorPlan?.settings;
 
   const execute = useHistoryStore((s) => s.execute);
@@ -177,6 +186,18 @@ export function FloorPlanCanvas() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!wallDrawStart && !rectDrawStart) {
+      setAlignGuides(null);
+    }
+  }, [wallDrawStart, rectDrawStart]);
+
+  useEffect(() => {
+    if (floorPlanTool === 'select') {
+      setOpeningPreview(null);
+    }
+  }, [floorPlanTool]);
 
   const clearOpeningLongPress = useCallback(() => {
     if (openingLongPressTimerRef.current) {
@@ -345,19 +366,25 @@ export function FloorPlanCanvas() {
     if (!floorPlan) return;
 
     if (e.button === 2) {
-      if (floorPlanTool === 'wall' && wallDrawStart) {
-        resetFloorPlanDrawState();
+      e.preventDefault();
+      if (
+        isFloorPlanDrawingInProgress({
+          floorPlanTool,
+          wallDrawStart,
+          rectDrawStart,
+        })
+      ) {
+        cancelFloorPlanTool();
         setAlignGuides(null);
+        setOpeningPreview(null);
         return;
       }
-      e.preventDefault();
-      setPanDrag({
+      rightPointerRef.current = {
         pointerId: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
-        startPanX: floorPlanPanX,
-        startPanZ: floorPlanPanZ,
-      });
+        panning: false,
+      };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
       return;
     }
@@ -470,6 +497,22 @@ export function FloorPlanCanvas() {
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!floorPlan) return;
+
+    const rightPointer = rightPointerRef.current;
+    if (rightPointer && rightPointer.pointerId === e.pointerId && !rightPointer.panning) {
+      const dx = e.clientX - rightPointer.startX;
+      const dy = e.clientY - rightPointer.startY;
+      if (Math.hypot(dx, dy) > RIGHT_DRAG_THRESHOLD) {
+        rightPointer.panning = true;
+        setPanDrag({
+          pointerId: e.pointerId,
+          startX: rightPointer.startX,
+          startY: rightPointer.startY,
+          startPanX: floorPlanPanX,
+          startPanZ: floorPlanPanZ,
+        });
+      }
+    }
 
     if (panDrag && panDrag.pointerId === e.pointerId) {
       const next = panViewByScreenDelta(
@@ -587,6 +630,9 @@ export function FloorPlanCanvas() {
   };
 
   const handlePointerCancel = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (rightPointerRef.current?.pointerId === e.pointerId) {
+      rightPointerRef.current = null;
+    }
     endPanDrag(e);
     if (openingDrag && openingDrag.pointerId === e.pointerId) {
       setOpeningDrag(null);
@@ -603,6 +649,20 @@ export function FloorPlanCanvas() {
   };
 
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button === 2 && rightPointerRef.current?.pointerId === e.pointerId) {
+      const rightPointer = rightPointerRef.current;
+      rightPointerRef.current = null;
+      if (panDrag && panDrag.pointerId === e.pointerId) {
+        endPanDrag(e);
+      } else if (!rightPointer.panning) {
+        cancelFloorPlanTool();
+        setAlignGuides(null);
+        setOpeningPreview(null);
+      }
+      (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+      return;
+    }
+
     if (panDrag && panDrag.pointerId === e.pointerId) {
       endPanDrag(e);
       return;
@@ -718,13 +778,7 @@ export function FloorPlanCanvas() {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          if (floorPlanTool === 'wall' && wallDrawStart) {
-            resetFloorPlanDrawState();
-            setAlignGuides(null);
-          }
-        }}
+        onContextMenu={(e) => e.preventDefault()}
       >
         <rect width="100%" height="100%" fill="#eef2f7" />
 

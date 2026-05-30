@@ -1,4 +1,4 @@
-import type { FloorPlan, Opening, OpeningType, Vec2 } from '@/types/floorPlan';
+import type { FloorPlan, Opening, OpeningType, Vec2, WallSegment } from '@/types/floorPlan';
 import {
   DEFAULT_DOOR_HEIGHT,
   DEFAULT_DOOR_WIDTH,
@@ -12,6 +12,49 @@ import { projectPointOnWall, wallLength } from './wallGeometry';
 
 const WALL_HIT_DISTANCE = 0.25;
 const OPENING_MARGIN = 0.05;
+const OPENING_ALONG_MARGIN = 0.05;
+
+function hitOpeningAtPoint(wall: WallSegment, opening: Opening, point: Vec2): boolean {
+  const proj = projectPointOnWall(wall, point);
+  const onSegment =
+    proj.offset >= opening.offset - OPENING_ALONG_MARGIN &&
+    proj.offset <= opening.offset + opening.width + OPENING_ALONG_MARGIN;
+  if (!onSegment) return false;
+
+  const perpLimit =
+    opening.type === 'door'
+      ? wall.thickness / 2 + opening.width
+      : wall.thickness / 2 + 0.2;
+  return proj.distance <= perpLimit;
+}
+
+/** 命中已放置的门/窗/门洞（优先于墙体拾取） */
+export function pickOpeningAtPoint(floorPlan: FloorPlan, point: Vec2): Opening | null {
+  let best: { opening: Opening; distance: number } | null = null;
+
+  for (const id of floorPlan.openingIds) {
+    const opening = floorPlan.openings[id];
+    const wall = floorPlan.walls[opening.wallId];
+    if (!wall || !hitOpeningAtPoint(wall, opening, point)) continue;
+
+    const proj = projectPointOnWall(wall, point);
+    if (!best || proj.distance < best.distance) {
+      best = { opening, distance: proj.distance };
+    }
+  }
+
+  return best?.opening ?? null;
+}
+
+/** 根据拾取点计算门窗沿墙偏移（拖拽/放置用） */
+export function resolveOpeningOffsetFromPoint(
+  wall: WallSegment,
+  opening: Opening,
+  pickPoint: Vec2,
+): number {
+  const proj = projectPointOnWall(wall, pickPoint);
+  return clampOpeningOffset(wallLength(wall), opening.width, proj.offset);
+}
 
 export function defaultOpeningSize(type: OpeningType): {
   width: number;

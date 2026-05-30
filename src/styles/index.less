@@ -809,6 +809,10 @@ button {
     &--panning {
       cursor: grabbing;
     }
+
+    &--dragging-opening {
+      cursor: grabbing;
+    }
   }
 
   &__wall {
@@ -832,6 +836,28 @@ button {
 
     &.is-preview {
       opacity: 0.92;
+    }
+
+    &.is-selected {
+      .floor-plan-canvas__window-symbol {
+        stroke: @color-accent;
+        stroke-width: 2;
+        fill: rgb(56 189 248 / 38%);
+      }
+
+      .floor-plan-canvas__door-leaf,
+      .floor-plan-canvas__door-frame-line {
+        stroke: @color-accent;
+      }
+
+      .floor-plan-canvas__door-arc {
+        stroke: @color-accent;
+        fill: rgb(45 212 191 / 22%);
+      }
+
+      .floor-plan-canvas__opening-hole {
+        stroke: @color-accent;
+      }
     }
   }
 
@@ -878,6 +904,23 @@ button {
   &__dim-line {
     stroke: #94a3b8;
     stroke-width: 1;
+  }
+
+  &__wall-dim-line {
+    stroke: #64748b;
+    stroke-width: 1;
+  }
+
+  &__wall-dim-tick {
+    stroke: #64748b;
+    stroke-width: 1;
+  }
+
+  &__wall-dim-label {
+    fill: #475569;
+    font-size: 11px;
+    font-weight: 500;
+    user-select: none;
   }
 
   &__dim-box--active {

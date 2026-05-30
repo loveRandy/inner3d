@@ -107,14 +107,21 @@ export function OpeningSymbol2D({
   view,
   isPreview,
   isSelected,
+  showDimensions = false,
 }: {
   wall: WallSegment;
   opening: Opening;
   view: CanvasViewState;
   isPreview?: boolean;
   isSelected?: boolean;
+  /** 放置/拖动预览时展示标尺 */
+  showDimensions?: boolean;
 }) {
   const classSuffix = `${isPreview ? ' is-preview' : ''}${isSelected ? ' is-selected' : ''}`;
+  const dimsActive = isPreview || showDimensions;
+  const dims = dimsActive ? (
+    <DimensionLines wall={wall} opening={opening} view={view} isPreview={dimsActive} />
+  ) : null;
 
   if (opening.type === 'window') {
     const win = getWindowSymbol2D(wall, opening);
@@ -138,7 +145,7 @@ export function OpeningSymbol2D({
           y2={worldToScreen(win.corners[3], view).y}
           className="floor-plan-canvas__window-cross"
         />
-        <DimensionLines wall={wall} opening={opening} view={view} isPreview={isPreview} />
+        {dims}
       </g>
     );
   }
@@ -159,7 +166,7 @@ export function OpeningSymbol2D({
           className="floor-plan-canvas__opening-hole"
           strokeWidth={6}
         />
-        <DimensionLines wall={wall} opening={opening} view={view} isPreview={isPreview} />
+        {dims}
       </g>
     );
   }
@@ -190,7 +197,7 @@ export function OpeningSymbol2D({
         className="floor-plan-canvas__door-frame-line"
       />
       <circle cx={hingeS.x} cy={hingeS.y} r={3} className="floor-plan-canvas__door-hinge" />
-      <DimensionLines wall={wall} opening={opening} view={view} isPreview={isPreview} />
+      {dims}
     </g>
   );
 }

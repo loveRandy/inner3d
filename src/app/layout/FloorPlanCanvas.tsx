@@ -6,6 +6,7 @@ import {
   createAddOpeningCommand,
   createAddRectWallsCommand,
   createAddWallCommand,
+  createUpdateOpeningCommand,
   createUpdateWallEndpointCommand,
 } from '@/lib/commands';
 import {
@@ -18,15 +19,19 @@ import {
   zoomViewAtScreen,
   type CanvasViewState,
 } from '@/lib/floorPlan/canvasView';
-import { findWallAtPoint } from '@/lib/floorPlan/openingPlacement';
+import { findWallAtPoint, pickOpeningAtPoint, resolveOpeningOffsetFromPoint } from '@/lib/floorPlan/openingPlacement';
 import {
   buildPreviewOpening,
   getOpeningsOnWall,
   getWallSolidQuads,
 } from '@/lib/floorPlan/openingRender';
 import { OpeningSymbol2D } from '@/features/floorPlan/OpeningSymbol2D';
+import { WallAnnotations2D } from '@/features/floorPlan/WallAnnotations2D';
+import {
+  shouldShowWallAnnotations,
+} from '@/lib/floorPlan/floorPlanToolState';
 import type { Opening } from '@/types/floorPlan';
-import { applyOrtho, dist2d, getWallQuad, projectPointOnWall, wallLength } from '@/lib/floorPlan/wallGeometry';
+import { applyOrtho, dist2d, getWallQuad, projectPointOnWall } from '@/lib/floorPlan/wallGeometry';
 import { snapFloorPlanPoint, snapToGrid2d } from '@/lib/floorPlan/snap';
 import {
   alignThresholdWorld,
@@ -39,6 +44,8 @@ import type { FloorPlanSelectionKind, FloorPlanSettings, Vec2, WallSegment } fro
 
 const MIN_WALL_LENGTH = 0.05;
 const WHEEL_ZOOM_SENSITIVITY = 0.001;
+const OPENING_LONG_PRESS_MS = 450;
+const OPENING_LONG_PRESS_MOVE_TOLERANCE = 8;
 
 function buildPreviewWall(
   start: Vec2,
@@ -92,6 +99,19 @@ export function FloorPlanCanvas() {
     startPanX: number;
     startPanZ: number;
   } | null>(null);
+  const [openingDrag, setOpeningDrag] = useState<{
+    openingId: string;
+    pointerId: number;
+    startOffset: number;
+  } | null>(null);
+  const [openingDragOffset, setOpeningDragOffset] = useState<number | null>(null);
+  const openingLongPressRef = useRef<{
+    openingId: string;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+  } | null>(null);
+  const openingLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const floorPlan = useSceneStore((s) => s.document.floorPlan);
   const gridSize = useSceneStore((s) => s.document.settings.gridSize);
@@ -127,6 +147,52 @@ export function FloorPlanCanvas() {
       panZ: floorPlanPanZ,
     }),
     [size.width, size.height, floorPlanZoom, floorPlanPanX, floorPlanPanZ],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (openingLongPressTimerRef.current) {
+        clearTimeout(openingLongPressTimerRef.current);
+      }
+    };
+  }, []);
+
+  const clearOpeningLongPress = useCallback(() => {
+    if (openingLongPressTimerRef.current) {
+      clearTimeout(openingLongPressTimerRef.current);
+      openingLongPressTimerRef.current = null;
+    }
+    openingLongPressRef.current = null;
+  }, []);
+
+  const resolveRawPoint = useCallback(
+    (clientX: number, clientY: number): Vec2 => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return { x: 0, z: 0 };
+      return screenToWorld(clientX - rect.left, clientY - rect.top, view);
+    },
+    [view],
+  );
+
+  const startOpeningLongPress = useCallback(
+    (openingId: string, pointerId: number, clientX: number, clientY: number) => {
+      clearOpeningLongPress();
+      openingLongPressRef.current = {
+        openingId,
+        pointerId,
+        startClientX: clientX,
+        startClientY: clientY,
+      };
+      openingLongPressTimerRef.current = setTimeout(() => {
+        openingLongPressTimerRef.current = null;
+        openingLongPressRef.current = null;
+        const opening = useSceneStore.getState().document.floorPlan?.openings[openingId];
+        if (!opening) return;
+        setOpeningDrag({ openingId, pointerId, startOffset: opening.offset });
+        setOpeningDragOffset(opening.offset);
+      }, OPENING_LONG_PRESS_MS);
+    },
+    [clearOpeningLongPress],
   );
 
   useEffect(() => {
@@ -237,20 +303,8 @@ export function FloorPlanCanvas() {
     (point: Vec2): { kind: FloorPlanSelectionKind; id: string } | null => {
       if (!floorPlan) return null;
 
-      for (const id of floorPlan.openingIds) {
-        const opening = floorPlan.openings[id];
-        const wall = floorPlan.walls[opening.wallId];
-        if (!wall) continue;
-        const center = {
-          x:
-            wall.start.x +
-            (wall.end.x - wall.start.x) * ((opening.offset + opening.width / 2) / wallLength(wall)),
-          z:
-            wall.start.z +
-            (wall.end.z - wall.start.z) * ((opening.offset + opening.width / 2) / wallLength(wall)),
-        };
-        if (dist2d(point, center) < 0.25) return { kind: 'opening', id };
-      }
+      const opening = pickOpeningAtPoint(floorPlan, point);
+      if (opening) return { kind: 'opening', id: opening.id };
 
       for (const id of floorPlan.roomIds) {
         const room = floorPlan.rooms[id];
@@ -287,6 +341,7 @@ export function FloorPlanCanvas() {
       return;
     }
 
+    const rawPoint = resolveRawPoint(e.clientX, e.clientY);
     const point = resolvePoint(e.clientX, e.clientY);
 
     if (floorPlanTool === 'wall') {
@@ -321,6 +376,16 @@ export function FloorPlanCanvas() {
       floorPlanTool === 'window' ||
       floorPlanTool === 'opening'
     ) {
+      const pickedOpening = pickOpeningAtPoint(floorPlan, rawPoint);
+      if (pickedOpening) {
+        setFloorPlanSelection([{ kind: 'opening', id: pickedOpening.id }]);
+        setOpeningPreview(null);
+        if (e.button === 0) {
+          startOpeningLongPress(pickedOpening.id, e.pointerId, e.clientX, e.clientY);
+          (e.currentTarget as Element).setPointerCapture(e.pointerId);
+        }
+        return;
+      }
       const hit = findWallAtPoint(floorPlan, point);
       if (hit) {
         execute(createAddOpeningCommand(hit.wallId, floorPlanTool, point));
@@ -329,7 +394,15 @@ export function FloorPlanCanvas() {
       return;
     }
 
-    const picked = pickAt(point);
+    const picked = pickAt(rawPoint);
+
+    if (picked?.kind === 'opening' && floorPlanTool === 'select' && e.button === 0) {
+      setFloorPlanSelection([picked]);
+      startOpeningLongPress(picked.id, e.pointerId, e.clientX, e.clientY);
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      return;
+    }
+
     if (picked?.kind === 'wall') {
       const wall = floorPlan.walls[picked.id];
       if (wall) {
@@ -359,6 +432,29 @@ export function FloorPlanCanvas() {
         e.clientY - panDrag.startY,
       );
       setFloorPlanPan(next.panX, next.panZ);
+      return;
+    }
+
+    const longPress = openingLongPressRef.current;
+    if (longPress && longPress.pointerId === e.pointerId && !openingDrag) {
+      const dx = e.clientX - longPress.startClientX;
+      const dy = e.clientY - longPress.startClientY;
+      if (Math.hypot(dx, dy) > OPENING_LONG_PRESS_MOVE_TOLERANCE) {
+        clearOpeningLongPress();
+      }
+    }
+
+    if (openingDrag && openingDrag.pointerId === e.pointerId) {
+      const opening = floorPlan.openings[openingDrag.openingId];
+      const wall = opening ? floorPlan.walls[opening.wallId] : null;
+      if (opening && wall) {
+        const offset = resolveOpeningOffsetFromPoint(
+          wall,
+          opening,
+          resolveRawPoint(e.clientX, e.clientY),
+        );
+        setOpeningDragOffset(offset);
+      }
       return;
     }
 
@@ -397,7 +493,7 @@ export function FloorPlanCanvas() {
       setHoveredFloorPlan(null);
     } else {
       setOpeningPreview(null);
-      const hovered = pickAt(point);
+      const hovered = pickAt(resolveRawPoint(e.clientX, e.clientY));
       setHoveredFloorPlan(hovered);
     }
   };
@@ -408,10 +504,49 @@ export function FloorPlanCanvas() {
     setPanDrag(null);
   };
 
+  const handlePointerCancel = (e: React.PointerEvent<SVGSVGElement>) => {
+    endPanDrag(e);
+    if (openingDrag && openingDrag.pointerId === e.pointerId) {
+      setOpeningDrag(null);
+      setOpeningDragOffset(null);
+    }
+    if (openingLongPressRef.current?.pointerId === e.pointerId) {
+      clearOpeningLongPress();
+    }
+    (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+  };
+
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
     if (panDrag && panDrag.pointerId === e.pointerId) {
       endPanDrag(e);
       return;
+    }
+
+    if (openingDrag && openingDrag.pointerId === e.pointerId) {
+      const opening = floorPlan?.openings[openingDrag.openingId];
+      if (
+        opening &&
+        openingDragOffset !== null &&
+        openingDragOffset !== openingDrag.startOffset
+      ) {
+        execute(
+          createUpdateOpeningCommand(
+            openingDrag.openingId,
+            { offset: openingDragOffset },
+            { offset: openingDrag.startOffset },
+          ),
+        );
+      }
+      setOpeningDrag(null);
+      setOpeningDragOffset(null);
+      clearOpeningLongPress();
+      (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+      return;
+    }
+
+    if (openingLongPressRef.current?.pointerId === e.pointerId) {
+      clearOpeningLongPress();
+      (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
     }
 
     if (!floorPlan) return;
@@ -456,17 +591,23 @@ export function FloorPlanCanvas() {
 
   const gridLines = gridVisible ? buildVisibleGridLines(view, gridSize) : [];
   const isPanning = panDrag !== null;
+  const showWallAnnotations = shouldShowWallAnnotations(floorPlanTool, {
+    wallDrawStart,
+    rectDrawStart,
+    dragEndpoint: dragEndpoint !== null,
+  });
+  const isOpeningDragging = openingDrag !== null;
 
   return (
     <div ref={containerRef} className="floor-plan-canvas">
       <svg
         width={size.width}
         height={size.height}
-        className={`floor-plan-canvas__svg${isWallDrawing ? ' floor-plan-canvas__svg--drawing-wall' : ''}${isPanning ? ' floor-plan-canvas__svg--panning' : ''}`}
+        className={`floor-plan-canvas__svg${isWallDrawing ? ' floor-plan-canvas__svg--drawing-wall' : ''}${isPanning ? ' floor-plan-canvas__svg--panning' : ''}${isOpeningDragging ? ' floor-plan-canvas__svg--dragging-opening' : ''}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={endPanDrag}
+        onPointerCancel={handlePointerCancel}
         onContextMenu={(e) => {
           e.preventDefault();
           if (floorPlanTool === 'wall' && wallDrawStart) {
@@ -513,7 +654,12 @@ export function FloorPlanCanvas() {
         {floorPlan.wallIds.map((id) => {
           const wall = floorPlan.walls[id];
           if (!wall) return null;
-          const wallOpenings = getOpeningsOnWall(floorPlan.openings, floorPlan.openingIds, id);
+          const wallOpenings = getOpeningsOnWall(floorPlan.openings, floorPlan.openingIds, id).map(
+            (opening) =>
+              openingDrag?.openingId === opening.id && openingDragOffset !== null
+                ? { ...opening, offset: openingDragOffset }
+                : opening,
+          );
           const previewOnWall =
             openingPreview?.wallId === id &&
             (openingPreview.opening.type === 'opening' || openingPreview.opening.type === 'window')
@@ -538,10 +684,15 @@ export function FloorPlanCanvas() {
           );
         })}
 
+        {showWallAnnotations && (
+          <WallAnnotations2D floorPlan={floorPlan} view={view} />
+        )}
+
         {floorPlan.openingIds.map((id) => {
           const opening = floorPlan.openings[id];
           const wall = floorPlan.walls[opening.wallId];
           if (!wall) return null;
+          if (openingDrag?.openingId === id) return null;
           return (
             <OpeningSymbol2D
               key={id}
@@ -553,6 +704,22 @@ export function FloorPlanCanvas() {
           );
         })}
 
+        {openingDrag && openingDragOffset !== null && (() => {
+          const opening = floorPlan.openings[openingDrag.openingId];
+          const wall = opening ? floorPlan.walls[opening.wallId] : null;
+          if (!opening || !wall) return null;
+          return (
+            <OpeningSymbol2D
+              key="opening-drag-preview"
+              wall={wall}
+              opening={{ ...opening, offset: openingDragOffset }}
+              view={view}
+              isPreview
+              showDimensions
+            />
+          );
+        })()}
+
         {openingPreview && (() => {
           const wall = floorPlan.walls[openingPreview.wallId];
           if (!wall) return null;
@@ -563,6 +730,7 @@ export function FloorPlanCanvas() {
               opening={openingPreview.opening}
               view={view}
               isPreview
+              showDimensions
             />
           );
         })()}

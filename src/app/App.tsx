@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { EditorLayout } from './layout/EditorLayout';
+import { ModelFootprintWarmup } from '@/features/floorPlan/ModelFootprintWarmup';
 import { loadScene, saveScene } from '@/lib/persistence';
 import { useSceneStore } from '@/stores/sceneStore';
 import { preloadAllAssets } from '@/features/assets';
@@ -29,5 +30,10 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [document]);
 
-  return <EditorLayout />;
+  return (
+    <>
+      <ModelFootprintWarmup />
+      <EditorLayout />
+    </>
+  );
 }

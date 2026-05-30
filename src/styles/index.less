@@ -813,6 +813,10 @@ button {
     &--dragging-opening {
       cursor: grabbing;
     }
+
+    &--dragging-entity {
+      cursor: grabbing;
+    }
   }
 
   &__wall {
@@ -899,6 +903,59 @@ button {
   &__opening-hole {
     stroke: #475569;
     stroke-linecap: round;
+  }
+
+  &__model-symbol {
+    cursor: pointer;
+
+    &.is-preview {
+      opacity: 0.92;
+    }
+
+    &.is-hovered .floor-plan-canvas__model-footprint {
+      fill: rgb(251 191 36 / 28%);
+    }
+
+    &.is-selected {
+      .floor-plan-canvas__model-footprint {
+        fill: rgb(56 189 248 / 32%);
+      }
+
+      .floor-plan-canvas__model-outline {
+        stroke: @color-accent;
+        stroke-width: 2.5;
+      }
+
+      .floor-plan-canvas__model-label {
+        fill: @color-accent;
+        font-weight: 600;
+      }
+    }
+
+    &.is-locked {
+      cursor: not-allowed;
+      opacity: 0.72;
+    }
+  }
+
+  &__model-footprint {
+    fill: rgb(255 255 255 / 72%);
+    stroke: none;
+  }
+
+  &__model-outline {
+    stroke: #64748b;
+    stroke-width: 1.5;
+  }
+
+  &__model-label {
+    fill: #334155;
+    font-size: 10px;
+    font-weight: 500;
+    user-select: none;
+    paint-order: stroke;
+    stroke: rgb(255 255 255 / 85%);
+    stroke-width: 3px;
   }
 
   &__dim-line {

@@ -23,15 +23,18 @@ const files = [
   'wall-window-wide-square-detailed.glb',
 ];
 
-const texture = path.join(tmpDir, 'Models/Textures/variation-a.png');
+const variationTexture = path.join(tmpDir, 'Models/Textures/variation-a.png');
+const colormapTexture = path.join(glbDir, 'Textures/colormap.png');
 
 console.log('Downloading Kenney Building Kit...');
 execSync(`curl -fsSL -o "${tmpZip}" "${zipUrl}"`, { stdio: 'inherit' });
 execSync(`unzip -qo "${tmpZip}" -d "${path.dirname(tmpDir)}"`, { stdio: 'inherit' });
 
 await mkdir(outDir, { recursive: true });
+await mkdir(path.join(outDir, 'Textures'), { recursive: true });
 for (const name of files) {
   await cp(path.join(glbDir, name), path.join(outDir, name));
 }
-await cp(texture, path.join(outDir, 'variation-a.png'));
-console.log(`Copied ${files.length} models + texture to ${outDir}`);
+await cp(variationTexture, path.join(outDir, 'variation-a.png'));
+await cp(colormapTexture, path.join(outDir, 'Textures/colormap.png'));
+console.log(`Copied ${files.length} models + textures to ${outDir}`);

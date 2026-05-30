@@ -7,6 +7,7 @@ import {
   createAddRectWallsCommand,
   createAddWallCommand,
   createUpdateOpeningCommand,
+  createUpdateTransformCommand,
   createUpdateWallEndpointCommand,
 } from '@/lib/commands';
 import {
@@ -26,7 +27,10 @@ import {
   getWallSolidQuads,
 } from '@/lib/floorPlan/openingRender';
 import { OpeningSymbol2D } from '@/features/floorPlan/OpeningSymbol2D';
+import { ModelSymbol2D } from '@/features/floorPlan/ModelSymbol2D';
 import { WallAnnotations2D } from '@/features/floorPlan/WallAnnotations2D';
+import { pickEntityAtPoint } from '@/lib/floorPlan/modelPick';
+import { cloneTransform } from '@/lib/transform/worldTransform';
 import {
   shouldShowWallAnnotations,
 } from '@/lib/floorPlan/floorPlanToolState';
@@ -41,6 +45,8 @@ import {
   type AlignSnapResult,
 } from '@/lib/floorPlan/alignGuides';
 import type { FloorPlanSelectionKind, FloorPlanSettings, Vec2, WallSegment } from '@/types/floorPlan';
+import type { Transform } from '@/types/scene';
+import { useModelFootprintStore } from '@/stores/modelFootprintStore';
 
 const MIN_WALL_LENGTH = 0.05;
 const WHEEL_ZOOM_SENSITIVITY = 0.001;
@@ -112,8 +118,23 @@ export function FloorPlanCanvas() {
     startClientY: number;
   } | null>(null);
   const openingLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [entityDrag, setEntityDrag] = useState<{
+    entityId: string;
+    pointerId: number;
+    startPoint: Vec2;
+    startTransform: Transform;
+  } | null>(null);
+  const [entityDragPreview, setEntityDragPreview] = useState<Transform | null>(null);
 
   const floorPlan = useSceneStore((s) => s.document.floorPlan);
+  const rootIds = useSceneStore((s) => s.document.rootIds);
+  const entities = useSceneStore((s) => s.document.entities);
+  const selectedIds = useSceneStore((s) => s.selectedIds);
+  const setSelection = useSceneStore((s) => s.setSelection);
+  const toggleSelection = useSceneStore((s) => s.toggleSelection);
+  const setHoveredEntity = useSceneStore((s) => s.setHoveredEntity);
+  const hoveredEntityId = useSceneStore((s) => s.hoveredEntityId);
+  const footprints = useModelFootprintStore((s) => s.footprints);
   const gridSize = useSceneStore((s) => s.document.settings.gridSize);
   const gridVisible = useSceneStore((s) => s.document.settings.gridVisible);
   const floorPlanSelection = useSceneStore((s) => s.floorPlanSelection);
@@ -394,6 +415,30 @@ export function FloorPlanCanvas() {
       return;
     }
 
+    if (floorPlanTool === 'select' && e.button === 0) {
+      const pickedEntity = pickEntityAtPoint(rawPoint, rootIds, entities, footprints);
+      if (pickedEntity) {
+        const entity = entities[pickedEntity];
+        if (e.shiftKey) {
+          toggleSelection(pickedEntity, true);
+        } else {
+          setSelection([pickedEntity]);
+        }
+        setFloorPlanSelection([]);
+        if (entity && !entity.locked) {
+          setEntityDrag({
+            entityId: pickedEntity,
+            pointerId: e.pointerId,
+            startPoint: rawPoint,
+            startTransform: cloneTransform(entity.transform),
+          });
+          setEntityDragPreview(null);
+          (e.currentTarget as Element).setPointerCapture(e.pointerId);
+        }
+        return;
+      }
+    }
+
     const picked = pickAt(rawPoint);
 
     if (picked?.kind === 'opening' && floorPlanTool === 'select' && e.button === 0) {
@@ -418,6 +463,9 @@ export function FloorPlanCanvas() {
       }
     }
     setFloorPlanSelection(picked ? [picked] : []);
+    if (!picked) {
+      setSelection([]);
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -458,6 +506,28 @@ export function FloorPlanCanvas() {
       return;
     }
 
+    if (entityDrag && entityDrag.pointerId === e.pointerId) {
+      const raw = resolveRawPoint(e.clientX, e.clientY);
+      const dx = raw.x - entityDrag.startPoint.x;
+      const dz = raw.z - entityDrag.startPoint.z;
+      const snapped = snapToGrid2d(
+        {
+          x: entityDrag.startTransform.position.x + dx,
+          z: entityDrag.startTransform.position.z + dz,
+        },
+        gridSize,
+      );
+      setEntityDragPreview({
+        ...entityDrag.startTransform,
+        position: {
+          ...entityDrag.startTransform.position,
+          x: snapped.x,
+          z: snapped.z,
+        },
+      });
+      return;
+    }
+
     const point = resolvePoint(e.clientX, e.clientY);
 
     if (dragEndpoint) {
@@ -491,8 +561,20 @@ export function FloorPlanCanvas() {
         setOpeningPreview(null);
       }
       setHoveredFloorPlan(null);
+    } else if (floorPlanTool === 'select') {
+      setOpeningPreview(null);
+      const raw = resolveRawPoint(e.clientX, e.clientY);
+      const hoveredEntity = pickEntityAtPoint(raw, rootIds, entities, footprints);
+      if (hoveredEntity) {
+        setHoveredEntity(hoveredEntity);
+        setHoveredFloorPlan(null);
+      } else {
+        setHoveredEntity(null);
+        setHoveredFloorPlan(pickAt(raw));
+      }
     } else {
       setOpeningPreview(null);
+      setHoveredEntity(null);
       const hovered = pickAt(resolveRawPoint(e.clientX, e.clientY));
       setHoveredFloorPlan(hovered);
     }
@@ -512,6 +594,10 @@ export function FloorPlanCanvas() {
     }
     if (openingLongPressRef.current?.pointerId === e.pointerId) {
       clearOpeningLongPress();
+    }
+    if (entityDrag && entityDrag.pointerId === e.pointerId) {
+      setEntityDrag(null);
+      setEntityDragPreview(null);
     }
     (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
   };
@@ -547,6 +633,28 @@ export function FloorPlanCanvas() {
     if (openingLongPressRef.current?.pointerId === e.pointerId) {
       clearOpeningLongPress();
       (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+    }
+
+    if (entityDrag && entityDrag.pointerId === e.pointerId) {
+      const entity = entities[entityDrag.entityId];
+      if (
+        entity &&
+        entityDragPreview &&
+        (entityDragPreview.position.x !== entityDrag.startTransform.position.x ||
+          entityDragPreview.position.z !== entityDrag.startTransform.position.z)
+      ) {
+        execute(
+          createUpdateTransformCommand(
+            entityDrag.entityId,
+            entityDragPreview,
+            entity.transform,
+          ),
+        );
+      }
+      setEntityDrag(null);
+      setEntityDragPreview(null);
+      (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+      return;
     }
 
     if (!floorPlan) return;
@@ -597,13 +705,15 @@ export function FloorPlanCanvas() {
     dragEndpoint: dragEndpoint !== null,
   });
   const isOpeningDragging = openingDrag !== null;
+  const isEntityDragging = entityDrag !== null;
+  const selectedEntitySet = new Set(selectedIds);
 
   return (
     <div ref={containerRef} className="floor-plan-canvas">
       <svg
         width={size.width}
         height={size.height}
-        className={`floor-plan-canvas__svg${isWallDrawing ? ' floor-plan-canvas__svg--drawing-wall' : ''}${isPanning ? ' floor-plan-canvas__svg--panning' : ''}${isOpeningDragging ? ' floor-plan-canvas__svg--dragging-opening' : ''}`}
+        className={`floor-plan-canvas__svg${isWallDrawing ? ' floor-plan-canvas__svg--drawing-wall' : ''}${isPanning ? ' floor-plan-canvas__svg--panning' : ''}${isOpeningDragging ? ' floor-plan-canvas__svg--dragging-opening' : ''}${isEntityDragging ? ' floor-plan-canvas__svg--dragging-entity' : ''}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -734,6 +844,26 @@ export function FloorPlanCanvas() {
             />
           );
         })()}
+
+        {rootIds.map((id) => {
+          const entity = entities[id];
+          if (!entity || entity.visible === false) return null;
+          const isDraggingThis = entityDrag?.entityId === id;
+          const previewTransform =
+            isDraggingThis && entityDragPreview ? entityDragPreview : undefined;
+          return (
+            <ModelSymbol2D
+              key={id}
+              entityId={id}
+              entity={entity}
+              view={view}
+              transformOverride={previewTransform}
+              isSelected={selectedEntitySet.has(id)}
+              isHovered={hoveredEntityId === id}
+              isPreview={isDraggingThis}
+            />
+          );
+        })}
 
         {snapGuideLines.map((line, i) => (
           <line

@@ -29,6 +29,7 @@ import {
 import { OpeningSymbol2D } from '@/features/floorPlan/OpeningSymbol2D';
 import { ModelSymbol2D } from '@/features/floorPlan/ModelSymbol2D';
 import { WallAnnotations2D } from '@/features/floorPlan/WallAnnotations2D';
+import { RoomFloorFills2D } from '@/features/floorPlan/RoomFloorFills2D';
 import { pickEntityAtPoint } from '@/lib/floorPlan/modelPick';
 import { cloneTransform } from '@/lib/transform/worldTransform';
 import {
@@ -742,6 +743,10 @@ export function FloorPlanCanvas() {
   if (!floorPlan) return null;
 
   const selectedSet = new Set(floorPlanSelection.map((s) => `${s.kind}:${s.id}`));
+  const selectedRoomIds = useMemo(
+    () => new Set(floorPlanSelection.filter((s) => s.kind === 'room').map((s) => s.id)),
+    [floorPlanSelection],
+  );
   const isSelected = (kind: FloorPlanSelectionKind, id: string) =>
     selectedSet.has(`${kind}:${id}`);
 
@@ -794,26 +799,11 @@ export function FloorPlanCanvas() {
           />
         ))}
 
-        {floorPlan.roomIds.map((id) => {
-          const room = floorPlan.rooms[id];
-          const c = worldToScreen(room.centroid, view);
-          return (
-            <g key={id}>
-              <text
-                x={c.x}
-                y={c.y}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                className={`floor-plan-canvas__room-label${isSelected('room', id) ? ' is-selected' : ''}`}
-              >
-                {room.name}
-              </text>
-              <text x={c.x} y={c.y + 14} textAnchor="middle" className="floor-plan-canvas__room-area">
-                {room.area.toFixed(1)} m²
-              </text>
-            </g>
-          );
-        })}
+        <RoomFloorFills2D
+          floorPlan={floorPlan}
+          view={view}
+          selectedRoomIds={selectedRoomIds}
+        />
 
         {floorPlan.wallIds.map((id) => {
           const wall = floorPlan.walls[id];
@@ -851,6 +841,27 @@ export function FloorPlanCanvas() {
         {showWallAnnotations && (
           <WallAnnotations2D floorPlan={floorPlan} view={view} />
         )}
+
+        {floorPlan.roomIds.map((id) => {
+          const room = floorPlan.rooms[id];
+          const c = worldToScreen(room.centroid, view);
+          return (
+            <g key={id} pointerEvents="none">
+              <text
+                x={c.x}
+                y={c.y}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className={`floor-plan-canvas__room-label${isSelected('room', id) ? ' is-selected' : ''}`}
+              >
+                {room.name}
+              </text>
+              <text x={c.x} y={c.y + 14} textAnchor="middle" className="floor-plan-canvas__room-area">
+                {room.area.toFixed(1)} m²
+              </text>
+            </g>
+          );
+        })}
 
         {floorPlan.openingIds.map((id) => {
           const opening = floorPlan.openings[id];

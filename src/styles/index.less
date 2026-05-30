@@ -1056,6 +1056,18 @@ button {
     stroke-dasharray: 4 3;
   }
 
+  &__room-floor {
+    stroke: #c4ad88;
+    stroke-width: 0.5;
+    opacity: 0.96;
+
+    &.is-selected {
+      stroke: @color-accent;
+      stroke-width: 1.5;
+      opacity: 1;
+    }
+  }
+
   &__room-label {
     font-size: 12px;
     fill: @color-text;

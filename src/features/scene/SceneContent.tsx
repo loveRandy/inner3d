@@ -7,6 +7,7 @@ import { SceneOutlines } from './SceneOutlines';
 import { SceneInteraction } from './SceneInteraction';
 import { MaterialModeButton } from '@/features/material/MaterialModeButton';
 import { WallMeshLayer } from '@/features/floorPlan/WallMeshLayer';
+import { RoomFloorMeshLayer } from '@/features/floorPlan/RoomFloorMeshLayer';
 
 export function SceneContent() {
   const rootIds = useSceneStore((s) => s.document.rootIds);
@@ -56,13 +57,16 @@ export function SceneContent() {
       )}
 
       {floorPlan && (
-        <WallMeshLayer
-          walls={floorPlan.walls}
-          wallIds={floorPlan.wallIds}
-          openings={floorPlan.openings}
-          openingIds={floorPlan.openingIds}
-          selection={floorPlanSelection}
-        />
+        <>
+          <RoomFloorMeshLayer floorPlan={floorPlan} />
+          <WallMeshLayer
+            walls={floorPlan.walls}
+            wallIds={floorPlan.wallIds}
+            openings={floorPlan.openings}
+            openingIds={floorPlan.openingIds}
+            selection={floorPlanSelection}
+          />
+        </>
       )}
 
       {rootIds.map((id) => {

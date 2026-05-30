@@ -1,6 +1,7 @@
 import { Grid } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { WallMeshLayer } from '@/features/floorPlan/WallMeshLayer';
+import { RoomFloorMeshLayer } from '@/features/floorPlan/RoomFloorMeshLayer';
 import { useSceneStore } from '@/stores/sceneStore';
 import { SceneObject } from './SceneObject';
 import { FixedTopDownCamera } from './FixedTopDownCamera';
@@ -52,13 +53,16 @@ export function TopViewContent() {
       </mesh>
 
       {floorPlan && (
-        <WallMeshLayer
-          walls={floorPlan.walls}
-          wallIds={floorPlan.wallIds}
-          openings={floorPlan.openings}
-          openingIds={floorPlan.openingIds}
-          selection={floorPlanSelection}
-        />
+        <>
+          <RoomFloorMeshLayer floorPlan={floorPlan} />
+          <WallMeshLayer
+            walls={floorPlan.walls}
+            wallIds={floorPlan.wallIds}
+            openings={floorPlan.openings}
+            openingIds={floorPlan.openingIds}
+            selection={floorPlanSelection}
+          />
+        </>
       )}
 
       {rootIds.map((id) => {

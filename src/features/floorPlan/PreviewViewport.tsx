@@ -3,6 +3,7 @@ import { Grid, OrbitControls } from '@react-three/drei';
 import { useSceneStore } from '@/stores/sceneStore';
 import { SceneObject } from '@/features/scene/SceneObject';
 import { WallMeshLayer } from './WallMeshLayer';
+import { RoomFloorMeshLayer } from './RoomFloorMeshLayer';
 
 export function PreviewViewport() {
   const rootIds = useSceneStore((s) => s.document.rootIds);
@@ -42,6 +43,8 @@ export function PreviewViewport() {
             infiniteGrid
           />
         )}
+
+        <RoomFloorMeshLayer floorPlan={floorPlan} />
 
         <WallMeshLayer
           walls={floorPlan.walls}

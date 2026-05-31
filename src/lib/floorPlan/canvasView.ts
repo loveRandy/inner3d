@@ -145,3 +145,36 @@ export function parseLengthMm(mm: string): number | null {
   if (!Number.isFinite(value) || value <= 0) return null;
   return value / 1000;
 }
+
+/** 将视图 fit 到多边形外接范围（地台设计画布用） */
+export function fitViewToPolygon(
+  polygon: Vec2[],
+  paddingRatio = 0.1,
+): Pick<CanvasViewState, 'panX' | 'panZ' | 'zoom' | 'worldSpan'> {
+  if (polygon.length < 3) {
+    return { panX: 0, panZ: 0, zoom: 1, worldSpan: 16 };
+  }
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+
+  for (const p of polygon) {
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minZ = Math.min(minZ, p.z);
+    maxZ = Math.max(maxZ, p.z);
+  }
+
+  const spanX = maxX - minX;
+  const spanZ = maxZ - minZ;
+  const span = Math.max(spanX, spanZ, 1) * (1 + paddingRatio * 2);
+
+  return {
+    panX: (minX + maxX) / 2,
+    panZ: (minZ + maxZ) / 2,
+    zoom: 1,
+    worldSpan: span,
+  };
+}

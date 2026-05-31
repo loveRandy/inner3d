@@ -10,18 +10,22 @@ import { StatusBar } from './StatusBar';
 import { SceneViewport } from '@/features/scene/SceneViewport';
 import { PreviewViewport } from '@/features/floorPlan/PreviewViewport';
 import { MaterialEditorLayout } from '@/features/material/MaterialEditorLayout';
+import { PlatformDesignLayout } from '@/features/platformDesign/PlatformDesignLayout';
 import { useEditorStore } from '@/stores/editorStore';
 
 export function EditorLayout() {
   const materialModeActive = useEditorStore((s) => s.materialMode?.active);
+  const platformDesignActive = useEditorStore((s) => s.platformDesignMode?.active);
   const editorMode = useEditorStore((s) => s.editorMode);
   const isFloorPlan = editorMode === 'floorPlan';
 
   return (
-    <div className="editor">
-      <TopBar />
+    <div className={`editor${platformDesignActive ? ' editor--platform-design' : ''}`}>
+      {!platformDesignActive && <TopBar />}
       {materialModeActive ? (
         <MaterialEditorLayout />
+      ) : platformDesignActive ? (
+        <PlatformDesignLayout />
       ) : (
         <>
           <div className="editor__main">

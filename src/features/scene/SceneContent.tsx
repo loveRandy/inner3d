@@ -6,8 +6,10 @@ import { TransformGizmo } from './TransformGizmo';
 import { SceneOutlines } from './SceneOutlines';
 import { SceneInteraction } from './SceneInteraction';
 import { MaterialModeButton } from '@/features/material/MaterialModeButton';
+import { PlatformDesignButton } from '@/features/platformDesign/PlatformDesignButton';
 import { WallMeshLayer } from '@/features/floorPlan/WallMeshLayer';
 import { RoomFloorMeshLayer } from '@/features/floorPlan/RoomFloorMeshLayer';
+import { useEditorStore } from '@/stores/editorStore';
 
 export function SceneContent() {
   const rootIds = useSceneStore((s) => s.document.rootIds);
@@ -19,6 +21,17 @@ export function SceneContent() {
   const placementAssetId = useSceneStore((s) => s.placementAssetId);
   const floorPlan = useSceneStore((s) => s.document.floorPlan);
   const floorPlanSelection = useSceneStore((s) => s.floorPlanSelection);
+  const selectedRoomId = useSceneStore((s) => s.selectedRoomId);
+  const setSelectedRoomId = useSceneStore((s) => s.setSelectedRoomId);
+  const editorMode = useEditorStore((s) => s.editorMode);
+  const materialMode = useEditorStore((s) => s.materialMode);
+  const platformDesignMode = useEditorStore((s) => s.platformDesignMode);
+
+  const floorInteractive =
+    editorMode === 'furniture' &&
+    !placementAssetId &&
+    !materialMode?.active &&
+    !platformDesignMode?.active;
 
   return (
     <>
@@ -58,7 +71,12 @@ export function SceneContent() {
 
       {floorPlan && (
         <>
-          <RoomFloorMeshLayer floorPlan={floorPlan} />
+          <RoomFloorMeshLayer
+            floorPlan={floorPlan}
+            selectedRoomId={selectedRoomId}
+            interactive={floorInteractive}
+            onSelectRoom={setSelectedRoomId}
+          />
           <WallMeshLayer
             walls={floorPlan.walls}
             wallIds={floorPlan.wallIds}
@@ -78,6 +96,7 @@ export function SceneContent() {
       {placementAssetId && <PlacementPreview />}
       <SceneOutlines />
       <MaterialModeButton />
+      <PlatformDesignButton />
       <TransformGizmo />
     </>
   );

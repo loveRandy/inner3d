@@ -15,12 +15,15 @@ import { snapToGrid } from '@/lib/math/snap';
 export function SceneInteraction() {
   const placementAssetId = useSceneStore((s) => s.placementAssetId);
   const selectedIds = useSceneStore((s) => s.selectedIds);
+  const floorPlan = useSceneStore((s) => s.document.floorPlan);
   const gridSize = useSceneStore((s) => s.document.settings.gridSize);
   const setSelection = useSceneStore((s) => s.setSelection);
+  const setSelectedRoomId = useSceneStore((s) => s.setSelectedRoomId);
   const setHoveredEntity = useSceneStore((s) => s.setHoveredEntity);
   const execute = useHistoryStore((s) => s.execute);
   const isTransformDragging = useEditorStore((s) => s.isTransformDragging);
   const gizmoPointerActive = useEditorStore((s) => s.gizmoPointerActive);
+  const editorMode = useEditorStore((s) => s.editorMode);
   const meshRef = useRef<Mesh>(null);
 
   const asset = placementAssetId ? getAssetById(placementAssetId) : null;
@@ -32,16 +35,24 @@ export function SceneInteraction() {
     const mesh = meshRef.current;
     if (!mesh) return;
 
+    const hasRoomFloors =
+      editorMode === 'furniture' &&
+      !!floorPlan &&
+      floorPlan.roomIds.length > 0;
+
     const blockGroundRaycast =
       !placementAssetId &&
-      (selectedIds.length > 0 || isTransformDragging || gizmoPointerActive);
+      (selectedIds.length > 0 ||
+        isTransformDragging ||
+        gizmoPointerActive ||
+        hasRoomFloors);
 
     if (blockGroundRaycast) {
       mesh.raycast = () => {};
     } else {
       mesh.raycast = MeshClass.prototype.raycast;
     }
-  }, [placementAssetId, selectedIds, isTransformDragging, gizmoPointerActive]);
+  }, [placementAssetId, selectedIds, isTransformDragging, gizmoPointerActive, floorPlan, editorMode]);
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
@@ -62,6 +73,7 @@ export function SceneInteraction() {
     if (isTransformDragging || gizmoPointerActive) return;
 
     setSelection([]);
+    setSelectedRoomId(null);
     setHoveredEntity(null);
   };
 

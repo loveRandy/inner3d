@@ -1,0 +1,22 @@
+[
+  { "id": "tex-concrete", "name": "水泥灰", "category": "texture", "color": "#9ca3af", "repeatMm": { "x": 800, "y": 800 } },
+  { "id": "tex-linen", "name": "亚麻纹", "category": "texture", "color": "#d6d3d1", "repeatMm": { "x": 500, "y": 500 } },
+  { "id": "tex-weave", "name": "编织纹", "category": "texture", "color": "#a8a29e", "repeatMm": { "x": 400, "y": 400 } },
+  { "id": "tex-paper", "name": "宣纸白", "category": "texture", "color": "#f5f5f4", "repeatMm": { "x": 600, "y": 600 } },
+  { "id": "tile-white", "name": "白色瓷砖", "category": "tile", "color": "#f8fafc", "repeatMm": { "x": 600, "y": 600 } },
+  { "id": "tile-gray", "name": "灰色瓷砖", "category": "tile", "color": "#cbd5e1", "repeatMm": { "x": 600, "y": 600 } },
+  { "id": "tile-beige", "name": "米色瓷砖", "category": "tile", "color": "#e7e5e4", "repeatMm": { "x": 600, "y": 600 } },
+  { "id": "tile-blue", "name": "蓝色瓷砖", "category": "tile", "color": "#93c5fd", "repeatMm": { "x": 600, "y": 600 } },
+  { "id": "stone-marble-white", "name": "白色大理石", "category": "stone", "color": "#e5e7eb", "repeatMm": { "x": 1200, "y": 1200 } },
+  { "id": "stone-marble-gray", "name": "灰色大理石", "category": "stone", "color": "#94a3b8", "repeatMm": { "x": 1200, "y": 1200 } },
+  { "id": "stone-granite", "name": "花岗岩", "category": "stone", "color": "#78716c", "repeatMm": { "x": 900, "y": 900 } },
+  { "id": "stone-slate", "name": "板岩", "category": "stone", "color": "#57534e", "repeatMm": { "x": 900, "y": 900 } },
+  { "id": "wood-grain-light", "name": "浅色木纹地砖", "category": "wood", "color": "#dcc9a8", "repeatMm": { "x": 1200, "y": 200 } },
+  { "id": "wood-oak", "name": "橡木地板", "category": "wood", "color": "#c4a574", "repeatMm": { "x": 1200, "y": 200 } },
+  { "id": "wood-walnut", "name": "胡桃木地板", "category": "wood", "color": "#5c4033", "repeatMm": { "x": 1200, "y": 200 } },
+  { "id": "wood-teak", "name": "柚木地板", "category": "wood", "color": "#b8956a", "repeatMm": { "x": 1200, "y": 200 } },
+  { "id": "carpet-beige", "name": "米色地毯", "category": "carpet", "color": "#d6cfc7", "repeatMm": { "x": 500, "y": 500 } },
+  { "id": "carpet-gray", "name": "灰色地毯", "category": "carpet", "color": "#9ca3af", "repeatMm": { "x": 500, "y": 500 } },
+  { "id": "carpet-blue", "name": "蓝色地毯", "category": "carpet", "color": "#64748b", "repeatMm": { "x": 500, "y": 500 } },
+  { "id": "carpet-green", "name": "绿色地毯", "category": "carpet", "color": "#6b9080", "repeatMm": { "x": 500, "y": 500 } }
+]

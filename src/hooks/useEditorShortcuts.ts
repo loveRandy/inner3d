@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useHistoryStore } from '@/stores/historyStore';
 import { useSceneStore } from '@/stores/sceneStore';
 import { useEditorStore } from '@/stores/editorStore';
+import { usePlatformHistoryStore } from '@/stores/platformHistoryStore';
 import { createRemoveEntitiesCommand, createRemoveFloorPlanSelectionCommand, createUpdateFloorPlanSettingsCommand } from '@/lib/commands';
 import { nextWallAlign } from '@/types/floorPlan';
 import type { FloorPlanTool } from '@/types/floorPlan';
@@ -18,10 +19,14 @@ const TOOL_KEYS: Record<string, FloorPlanTool> = {
 export function useEditorShortcuts() {
   const undo = useHistoryStore((s) => s.undo);
   const redo = useHistoryStore((s) => s.redo);
+  const platformUndo = usePlatformHistoryStore((s) => s.undo);
+  const platformRedo = usePlatformHistoryStore((s) => s.redo);
   const execute = useHistoryStore((s) => s.execute);
   const selectedIds = useSceneStore((s) => s.selectedIds);
   const floorPlanSelection = useSceneStore((s) => s.floorPlanSelection);
   const editorMode = useEditorStore((s) => s.editorMode);
+  const platformDesignMode = useEditorStore((s) => s.platformDesignMode);
+  const setActiveFloorMaterialPreset = useEditorStore((s) => s.setActiveFloorMaterialPreset);
   const setFloorPlanTool = useEditorStore((s) => s.setFloorPlanTool);
   const cancelFloorPlanTool = useEditorStore((s) => s.cancelFloorPlanTool);
   const floorPlan = useSceneStore((s) => s.document.floorPlan);
@@ -32,6 +37,24 @@ export function useEditorShortcuts() {
       const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
 
       const mod = e.metaKey || e.ctrlKey;
+      if (platformDesignMode?.active) {
+        if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          platformUndo();
+          return;
+        }
+        if (mod && ((e.key.toLowerCase() === 'z' && e.shiftKey) || e.key.toLowerCase() === 'y')) {
+          e.preventDefault();
+          platformRedo();
+          return;
+        }
+        if (e.key === 'Escape' && !inInput) {
+          e.preventDefault();
+          setActiveFloorMaterialPreset(null);
+          return;
+        }
+      }
+
       if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();
@@ -100,5 +123,9 @@ export function useEditorShortcuts() {
     setFloorPlanTool,
     cancelFloorPlanTool,
     floorPlan,
+    platformUndo,
+    platformRedo,
+    platformDesignMode,
+    setActiveFloorMaterialPreset,
   ]);
 }

@@ -43,6 +43,8 @@ export interface Room {
   wallLoop: string[];
   area: number;
   centroid: Vec2;
+  /** 地台材质；undefined 表示使用全局默认 */
+  floorMaterial?: import('@/types/platformDesign').RoomFloorMaterial;
 }
 
 export interface FloorPlanSettings {

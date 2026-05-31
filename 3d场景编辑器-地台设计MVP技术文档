@@ -1,0 +1,605 @@
+# 3D 场景编辑器 — 地台设计 MVP 技术文档
+
+> 版本：v0.2（MVP）  
+> 前置：已完成 [P0 技术文档](./3d场景编辑器mvp技术文档)（家具编辑）、[P1 技术文档](./3d场景编辑器-画户型P1技术文档)（画户型、房间闭合）  
+> 参考：地台设计交互参考图（3D 入口 / 2D 编辑页 / 材质跟随光标）  
+> 技术栈延续：React + Vite + TypeScript + R3F + Drei + Zustand + IndexedDB
+
+---
+
+## 1. 项目概述
+
+### 1.1 目标
+
+在已有 **3D 场景 + 户型房间** 基础上，新增 **地台设计** 能力：用户可在 3D 视图中点击房间地面进入地台编辑，在 2D 顶视画布上为整个封闭空间的地台 **整体替换材质**，并实时在右侧 3D 预览中查看效果；保存后写回方案文档，关闭则放弃未保存修改并返回上一页。
+
+### 1.2 与参考图的对照
+
+| 参考图 | 内容 | MVP 是否实现 |
+|--------|------|--------------|
+| 图一 | 3D 中点击地面 → 蓝色选中描边 + 浮动「地台设计 >」按钮 | ✅ |
+| 图二 | 全屏地台设计页：左材质库 / 中 2D 画布（尺寸标注）/ 右 3D 预览；顶栏撤销/重做/清空；右上保存/关闭 | ✅ |
+| 图三 | 左侧选材质后，光标下方跟随材质缩略图；画布左键点击替换材质 | ✅ |
+
+### 1.3 MVP 功能边界
+
+| 功能 | MVP | 说明 |
+|------|-----|------|
+| 3D 点击房间地面选中 | ✅ | 射线拾取 `RoomFloorMesh` |
+| 选中后显示「地台设计」入口 | ✅ | Html 浮动按钮，对标现有 `MaterialModeButton` |
+| 进入地台设计全屏子模式 | ✅ | 对标 `MaterialEditorLayout` 路由式布局 |
+| 左侧材质库（贴图/瓷砖/石材/地板/地毯） | ✅ | 静态 manifest + 分类 Tab |
+| 材质搜索 | ✅ | 类目内关键字搜索 |
+| 中栏 2D 地台画布 + 尺寸标注 | ✅ | SVG，显示房间地台多边形与外接矩形尺寸（mm） |
+| 材质跟随光标预览 | ✅ | 选中材质后 DOM overlay 跟随鼠标 |
+| 左键点击画布换材 | ✅ | 点击地台区域，**整片地面**替换为当前选中材质 |
+| 右侧封闭空间 3D 预览 | ✅ | 只读 R3F，同步地台材质 |
+| 撤销 / 重做 / 清空 | ✅ | Command 栈，仅作用于当前地台编辑会话 |
+| 保存 / 关闭 | ✅ | 保存写回 `Room.floorMaterial`；关闭丢弃 draft |
+| 画布右键平移、滚轮缩放 | ✅ | 复用 `FloorPlanCanvas` 视图变换 |
+| 地台分块 / 局部换材 | ❌ | P2 |
+| 地台凸出高度、踢脚线、波打线 | ❌ | P2 |
+| 材质旋转、缩放、偏移 | ❌ | P2 |
+| AI 材质推荐（图一工具栏） | ❌ | P2 |
+| 多房间批量编辑 | ❌ | MVP 一次编辑一个房间 |
+| 地台设计从 2D 画户型模式进入 | ❌ | MVP 仅从 3D 场景（摆家具模式）进入 |
+
+---
+
+## 2. 产品交互设计
+
+### 2.1 入口：3D 场景选中地台（图一）
+
+**触发条件**：
+
+- 当前为 **摆家具模式**（`editorMode === 'furniture'`）
+- 未处于放置模式、材质替换模式、地台设计模式
+- 场景中存在 `floorPlan` 且至少有一个闭合房间
+
+**交互流程**：
+
+```
+用户左键点击 3D 房间地面
+  → 射线命中 RoomFloorMesh（按 roomId 区分）
+  → sceneStore 记录 selectedRoomId（地台选中，与家具 selectedIds 互斥）
+  → 地台 mesh 显示蓝色描边（Outline 或 emissive）
+  → 在地台包围盒上方显示浮动按钮「地台设计 >」
+用户点击「地台设计 >」
+  → enterPlatformDesignMode(roomId)
+  → 切换为全屏 PlatformDesignLayout
+```
+
+**与家具选中的互斥**：
+
+- 选中地台时清空 `selectedIds`
+- 选中家具时清空 `selectedRoomId`
+- Esc 取消地台选中
+
+**浮动按钮样式**（对标图一）：
+
+- 深色圆角胶囊按钮，文案「地台设计 >」
+- 可选：下方展示精简工具条占位（铅笔/橡皮/AI），MVP 仅展示按钮，工具条 disabled + tooltip「即将推出」
+
+### 2.2 地台设计页布局（图二）
+
+进入后 **替换** 主编辑区为全屏三栏布局（隐藏原 TopBar 摆家具工具，使用地台专用顶栏）：
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 地台设计          [撤销] [重做] [清空]                    [帮助] [保存] [×] │
+├──────────────┬──────────────────────────────────────────┬───────────────────┤
+│              │  ┌ 绘图工具占位（MVP 仅选择/查看） ─┐   │                   │
+│  Platform    │  └──────────────────────────────────┘   │  房间选择         │
+│  Material    │                                          │  ┌─────────────┐  │
+│  Panel       │     PlatformDesignCanvas (SVG 2D)        │  │ 3D Preview  │  │
+│  280px       │     · 地台多边形 + 整片材质填充         │  │ (封闭空间)  │  │
+│              │     · 四边尺寸标注 (mm)                   │  └─────────────┘  │
+│  贴图        │     · 棋盘格背景                          │                   │
+│  瓷砖        │                                          │                   │
+│  石材        │                                          │                   │
+│  地板        │                                          │                   │
+│  地毯        │                                          │                   │
+│              │                                          │                   │
+├──────────────┴──────────────────────────────────────────┴───────────────────┤
+│ StatusBar：缩放 % | 当前材质 | 右键平移 · 滚轮缩放                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**顶栏按钮**：
+
+| 按钮 | 位置 | 行为 |
+|------|------|------|
+| 撤销 | 左中 | `platformHistory.undo()` |
+| 重做 | 左中 | `platformHistory.redo()` |
+| 清空 | 左中 | 确认后将当前房间地台恢复为进入编辑时的快照 |
+| 帮助 | 右 | MVP：打开静态说明 Popover |
+| 保存 | 右 | 将 `draftPresetId` 写入 `document.floorPlan.rooms[roomId].floorMaterial`，持久化可选提示，退出编辑模式 |
+| 关闭 × | 右 | 若有未保存修改 → 确认弹窗；确认后丢弃 draft，`exitPlatformDesignMode()` |
+
+**快捷键**：
+
+- `Ctrl/Cmd+Z` 撤销，`Ctrl/Cmd+Shift+Z` 重做
+- `Esc` 取消当前选中的材质（退出「换材光标」状态）
+
+### 2.3 左侧 — 材质库（PlatformMaterialPanel）
+
+**分类**（对标图二/图三）：
+
+| Tab ID | 显示名 | MVP 素材来源 |
+|--------|--------|--------------|
+| `texture` | 贴图 | `assets/floorMaterials/manifest.json` |
+| `tile` | 瓷砖 | 同上 |
+| `stone` | 石材 | 同上 |
+| `wood` | 地板 | 同上 |
+| `carpet` | 地毯 | 同上 |
+
+**面板结构**：
+
+1. 搜索框：「在类目下搜索」
+2. 分类 Tab（左侧竖排 + 顶部当前类目标题）
+3. 材质网格（2 列缩略图）
+4. 分页（MVP：每页 20 条，静态数据可不做分页 UI，预留接口）
+
+**选中材质**：
+
+```typescript
+setActiveFloorMaterialPreset(presetId: string | null)
+```
+
+- 选中后进入 **FloorPaintMode**（换材模式）
+- 再次点击同一材质 → 取消选中，退出换材模式
+
+### 2.4 中栏 — 地台 2D 画布（PlatformDesignCanvas）
+
+**渲染技术（与画户型一致）**：
+
+画户型主画布 `FloorPlanCanvas` 已采用 **SVG** 实现（`<svg>` + React 子组件，见 `src/app/layout/FloorPlanCanvas.tsx`）。地台设计画布 **必须使用相同方案**，不引入 Canvas 2D：
+
+| 项 | 画户型 `FloorPlanCanvas` | 地台 `PlatformDesignCanvas` |
+|----|--------------------------|-----------------------------|
+| 渲染层 | SVG | SVG（相同） |
+| 坐标变换 | `lib/floorPlan/canvasView.ts` | **直接复用**同一模块 |
+| 视图状态类型 | `CanvasViewState` | `CanvasViewState`（相同结构） |
+| 平移/缩放 | 右键拖拽 + 滚轮，`panViewByScreenDelta` / `zoomViewAtScreen` | 相同 API |
+| 屏幕↔世界 | `screenToWorld` / `worldToScreen` | 相同 API |
+| 指针事件 | `onPointerDown/Move/Up` 绑定在 `<svg>` | 相同模式 |
+| 子图层 | `RoomFloorFills2D`、`WallAnnotations2D` 等 SVG 组件 | `RoomFloorFill2D`、尺寸标注层等 SVG 组件 |
+
+地台画布视图状态存于 `platformDesignMode.canvasView`，字段与 `CanvasViewState` 一致，但 **与画户型的 `floorPlanZoom/Pan` 分开存储**，避免两种模式切换时视图互相污染。
+
+**渲染内容**：
+
+1. **背景**：深色棋盘格（透明感，对标图二）
+2. **地台主体**：当前房间 `getRoomFloorPolygon()` 多边形，**整片**填充当前材质纹理/颜色
+3. **尺寸标注**：外接矩形四边标注宽高（mm，取整），样式复用 `FloorPlanCanvas` 尺寸线
+4. **换材高亮**：换材模式下 hover 地台区域时显示浅色描边，提示可点击应用
+
+**画布交互**：
+
+| 操作 | 换材模式 OFF | 换材模式 ON |
+|------|--------------|-------------|
+| 左键点击地台区域 | — | `SetFloorMaterialCommand` 将整片地面替换为 `activePresetId` |
+| 左键点击空白 | — | 无操作 |
+| 右键拖拽 | 平移画布 | 平移画布 |
+| 滚轮 | 缩放（以光标为中心） | 缩放 |
+| 双击 | 适应窗口（fit） | 适应窗口 |
+
+**换材规则**：
+
+- 一次点击作用于 **整个房间地台**，不存在分块或局部替换
+- 若当前材质与选中材质相同，点击无操作（不入栈）
+- 地台区域判定：点击坐标转换到世界 XZ 后，落在 `getRoomFloorPolygon()` 多边形内
+
+**视图状态**：复用 `CanvasViewState`（定义于 `lib/floorPlan/canvasView.ts`），存于 `platformDesignMode.canvasView`，与画户型的 `floorPlanZoom/Pan` 独立。
+
+进入地台设计时调用 `createDefaultViewState()` + `fitViewToPolygon()`（可在 `canvasView.ts` 中新增 fit 工具函数）自动 **fit 到当前房间地台 AABB**（留 10% 边距）。
+
+### 2.5 材质跟随光标（图三）
+
+**显示条件**：`activeFloorMaterialPresetId !== null` 且鼠标位于画布区域内。
+
+**实现**：
+
+- 在 `PlatformDesignCanvas` 外层监听 `pointermove`
+- 渲染 `position: fixed` 的 `.floor-material-cursor-ghost`：
+  - 尺寸：48×48px（或 64×64）
+  - 内容：当前材质缩略图 + 1px 白色描边 + 轻微阴影
+  - 位置：`left: clientX + 12`, `top: clientY + 12`（偏移避免遮挡光标）
+- 光标样式：`cursor: copy` 或自定义 paint 图标
+- 离开画布区域：隐藏 ghost，但不退出换材模式
+
+### 2.6 右侧 — 3D 预览（PlatformPreviewViewport）
+
+**职责**：展示 **当前编辑房间** 的封闭空间 3D 视图（墙体 + 整片地台材质 + 简单光照）。
+
+**行为**：
+
+- 只读：`OrbitControls` 可旋转/缩放，不可编辑墙/家具
+- 与 2D 画布共用 `draftPresetId` 数据源，材质变更实时同步
+- 标题：「房间选择」+ 当前房间名称（MVP 不可切换其他房间，下拉 disabled）
+- 相机初始角度：斜 45° 俯视，框选整个房间
+
+**与主 3D 场景的区别**：
+
+- 预览窗仅渲染单房间相关墙体（按 `room.wallLoop` 过滤）及该房间地台
+- 不渲染家具（MVP 简化，避免干扰地台材质判断）
+
+---
+
+## 3. 技术栈与复用
+
+| 模块 | 复用来源 | 说明 |
+|------|----------|------|
+| 全屏子模式切换 | `MaterialEditorLayout` + `materialMode` | 新增 `platformDesignMode` 平行结构 |
+| 2D 画布（SVG） | `FloorPlanCanvas.tsx` | 地台画布同结构：容器 div + `<svg>` + pointer 事件 |
+| 2D 画布坐标变换 | `lib/floorPlan/canvasView.ts` | **直接复用**，不新建 `platformCanvasView.ts` |
+| 房间地台多边形 | `getRoomFloorPolygon()` | 已有 |
+| 3D 地台 mesh | `RoomFloorMeshLayer` | 扩展为读取 `Room.floorMaterial.presetId` |
+| 撤销重做 | `historyStore` + Command | 地台编辑使用 **独立会话栈**（见 §6） |
+| 材质 manifest | `features/materials` | 新建 `floorMaterials` 专用 manifest |
+| 棋盘格背景 | CSS `repeating-conic-gradient` | 与图二一致 |
+
+**不引入新依赖**；纹理继续使用 Three.js `TextureLoader` + SVG/CSS 图案。
+
+---
+
+## 4. 架构设计
+
+### 4.1 目录结构
+
+```
+src/
+├── features/
+│   └── platformDesign/
+│       ├── PlatformDesignLayout.tsx      # 全屏三栏容器
+│       ├── PlatformDesignTopBar.tsx      # 撤销/重做/清空/保存/关闭
+│       ├── PlatformMaterialPanel.tsx     # 左侧材质库
+│       ├── PlatformDesignCanvas.tsx      # 中栏 SVG 画布（结构对标 FloorPlanCanvas）
+│       ├── PlatformPreviewViewport.tsx   # 右侧 3D 预览
+│       ├── PlatformDesignButton.tsx      # 3D 入口浮动按钮
+│       ├── RoomFloorPickLayer.tsx        # 3D 地台射线拾取 + 选中描边
+│       ├── FloorMaterialCursorGhost.tsx  # 光标跟随材质
+│       ├── RoomFloorFill2D.tsx           # 整片地台 SVG 填充
+│       └── floorMaterials/               # manifest + 缩略图
+├── lib/
+│   ├── floorPlan/
+│   │   └── canvasView.ts                 # 已有；地台复用，可扩展 fitViewToPolygon
+│   └── platformDesign/
+│       └── floorMaterialRender.ts        # 2D SVG pattern / 3D 材质渲染工具
+├── lib/commands/
+│   ├── SetFloorMaterialCommand.ts        # 整片换材
+│   └── ResetRoomFloorMaterialCommand.ts  # 清空恢复
+└── types/
+    └── platformDesign.ts
+```
+
+### 4.2 模式与布局切换
+
+```typescript
+// editorStore 扩展
+type EditorMode = 'furniture' | 'floorPlan'; // 已有
+
+interface PlatformDesignMode {
+  active: true;
+  roomId: string;
+  /** 进入编辑时的材质快照，用于关闭/清空 */
+  snapshotPresetId: string;
+  /** 编辑中的材质 presetId */
+  draftPresetId: string;
+  activePresetId: string | null;
+  canvasView: CanvasViewState;  // 复用 lib/floorPlan/canvasView.ts
+}
+
+interface EditorState {
+  platformDesignMode: PlatformDesignMode | null;
+  enterPlatformDesignMode: (roomId: string) => void;
+  exitPlatformDesignMode: (opts?: { save?: boolean }) => void;
+  setActiveFloorMaterialPreset: (presetId: string | null) => void;
+  setPlatformCanvasView: (view: Partial<CanvasViewState>) => void;
+}
+```
+
+`EditorLayout` 渲染优先级：
+
+```
+materialMode?.active     → MaterialEditorLayout
+platformDesignMode?.active → PlatformDesignLayout
+else                     → 原有摆家具 / 画户型布局
+```
+
+### 4.3 数据流
+
+```mermaid
+flowchart LR
+  RoomFloorPickLayer -->|select room| sceneStore
+  PlatformDesignButton -->|enter| editorStore
+  PlatformMaterialPanel -->|setActivePreset| editorStore
+  PlatformDesignCanvas -->|set material| platformHistory
+  platformHistory -->|update draftPresetId| editorStore
+  PlatformPreviewViewport -->|read draftPresetId| editorStore
+  PlatformDesignTopBar -->|save| sceneStore
+  sceneStore -->|persist| IndexedDB
+  RoomFloorMeshLayer -->|read saved presetId| sceneStore
+```
+
+**原则**：
+
+- **编辑会话内**：换材操作只改 `draftPresetId`，不直接改 `document`
+- **保存**：一次性将 `draftPresetId` 写入 `floorPlan.rooms[roomId].floorMaterial`
+- **关闭**：丢弃 draft，不影响 document
+
+---
+
+## 5. 数据模型
+
+### 5.1 地台材质类型
+
+```typescript
+// types/platformDesign.ts
+
+export interface FloorMaterialPreset {
+  id: string;
+  name: string;
+  category: 'texture' | 'tile' | 'stone' | 'wood' | 'carpet';
+  thumbnail: string;
+  /** 可选 PBR 贴图路径 */
+  map?: string;
+  color: string;
+  roughness?: number;
+  metalness?: number;
+  /** 2D/3D 纹理重复尺寸 (mm) */
+  repeatMm?: { x: number; y: number };
+}
+
+/** 单房间地台材质，持久化在 Room 上 */
+export interface RoomFloorMaterial {
+  /** 整片地面使用的材质 presetId */
+  presetId: string;
+}
+
+export const DEFAULT_FLOOR_PRESET_ID = 'wood-grain-light';
+
+export const DEFAULT_FLOOR_MATERIAL: RoomFloorMaterial = {
+  presetId: DEFAULT_FLOOR_PRESET_ID,
+};
+```
+
+### 5.2 Room 扩展
+
+```typescript
+// types/floorPlan.ts — Room 接口扩展
+
+export interface Room {
+  id: string;
+  name: string;
+  wallLoop: string[];
+  area: number;
+  centroid: Vec2;
+  /** 地台材质；undefined 表示使用 DEFAULT_FLOOR_MATERIAL */
+  floorMaterial?: RoomFloorMaterial;
+}
+```
+
+### 5.3 SceneDocument 版本
+
+- 保持 `version: 2`，`Room.floorMaterial` 为可选字段
+- 旧文档加载：`floorMaterial` 缺省时按 `DEFAULT_FLOOR_MATERIAL` 渲染，不写回直至用户保存
+
+---
+
+## 6. 撤销 / 重做 / 清空
+
+### 6.1 独立会话历史栈
+
+地台编辑页的 undo/redo **不共用** 全局 `historyStore`（避免与画墙/摆家具操作混淆）：
+
+```typescript
+interface PlatformHistoryState {
+  past: PlatformCommand[];
+  future: PlatformCommand[];
+  execute: (cmd: PlatformCommand) => void;
+  undo: () => void;
+  redo: () => void;
+  clear: () => void;
+}
+```
+
+### 6.2 Command 列表
+
+| Command | 触发 | 说明 |
+|---------|------|------|
+| `SetFloorMaterialCommand` | 换材模式下左键点击地台 | 记录 oldPresetId + newPresetId，更新 `draftPresetId` |
+| `ResetRoomFloorMaterialCommand` | 点击「清空」确认 | 恢复为 `snapshotPresetId` |
+
+**清空**：
+
+- 弹窗：「将地台材质恢复为进入编辑前的状态，是否继续？」
+- 确认后执行 `ResetRoomFloorMaterialCommand`
+
+**保存**：
+
+- 不进入 undo 栈；将 draft 写入 sceneStore 后，`snapshotPresetId` 更新为 saved 状态
+- 保存成功后 toast「地台已保存」
+
+---
+
+## 7. 3D 渲染
+
+### 7.1 主场景地台（RoomFloorMeshLayer 改造）
+
+- 读取 `room.floorMaterial.presetId`（缺省则用 `DEFAULT_FLOOR_PRESET_ID`）
+- **MVP 实现**：每个房间一个 `ShapeGeometry` mesh + 单个 `meshStandardMaterial`（map/color），UV 按地台 AABB 平铺
+- 未进入地台设计时，3D 主场景同样展示已保存的整片材质
+
+### 7.2 选中描边（RoomFloorPickLayer）
+
+- 每个房间地台 mesh 增加 `userData.roomId`
+- 选中房间：`@react-three/drei` Outline 或 duplicate mesh scale 1.002 + blue emissive
+- `pointerdown` → `setSelectedRoomId(roomId)`
+
+### 7.3 预览窗
+
+- 过滤渲染：`room.wallLoop` 上的墙 + 该 room 地台
+- 使用与主场景相同的整片材质逻辑，数据源为 `draftPresetId`
+
+---
+
+## 8. 静态资源
+
+### 8.1 floorMaterials/manifest.json
+
+MVP 每类至少 4 条，共约 20 条：
+
+```json
+[
+  {
+    "id": "wood-grain-light",
+    "name": "浅色木纹地砖",
+    "category": "wood",
+    "color": "#dcc9a8",
+    "thumbnail": "/floorMaterials/thumbnails/wood-grain-light.svg",
+    "map": "/floorMaterials/maps/wood-grain-light.png",
+    "repeatMm": { "x": 1200, "y": 200 }
+  }
+]
+```
+
+默认材质 `wood-grain-light` 对应当前硬编码木纹效果，保证旧场景视觉一致。
+
+---
+
+## 9. 持久化
+
+- 保存地台：`sceneStore` 更新 `document.floorPlan.rooms[roomId].floorMaterial = { presetId: draftPresetId }`
+- 触发 IndexedDB 写入（复用现有 TopBar 保存链路，或地台页保存时自动调用 `persistDocument()`）
+- 导出 JSON 时包含 `floorMaterial`
+
+---
+
+## 10. 实施计划
+
+| 阶段 | 任务 | 预估 |
+|------|------|------|
+| **D1** | 类型 `RoomFloorMaterial` + Room 扩展 + 默认 manifest | 0.5d |
+| **D2** | 3D 拾取 + 选中描边 + `PlatformDesignButton` | 0.5d |
+| **D3** | `platformDesignMode` 状态 + `PlatformDesignLayout` + TopBar | 0.5d |
+| **D4** | `PlatformMaterialPanel` + 分类/搜索 | 0.5d |
+| **D5** | `PlatformDesignCanvas`（SVG，对标 `FloorPlanCanvas`）+ 整片填充 + 尺寸标注 + pan/zoom | 1d |
+| **D6** | 换材光标 ghost + 地台点击 + `SetFloorMaterialCommand` | 0.5d |
+| **D7** | `platformHistory` 撤销/重做/清空 | 0.5d |
+| **D8** | `RoomFloorMeshLayer` 整片材质 + `PlatformPreviewViewport` | 1d |
+| **D9** | 保存/关闭/未保存确认 + IndexedDB 联调 + 验收 | 0.5d |
+
+**合计**：约 **5.5 人日**（单人）。
+
+---
+
+## 11. 验收标准
+
+- [ ] 摆家具模式 3D 视图中，点击房间地面出现蓝色描边与「地台设计 >」按钮
+- [ ] 点击「地台设计 >」进入全屏地台设计页，布局与图二一致（左材质 / 中画布 / 右 3D）
+- [ ] 画布正确显示当前房间地台轮廓与四边尺寸（mm），整片填充当前材质
+- [ ] 左侧切换贴图/瓷砖/石材/地板/地毯分类，网格展示材质缩略图
+- [ ] 选中材质后，鼠标在画布内移动时，光标下方跟随显示材质缩略图（图三）
+- [ ] 换材模式下左键点击地台区域，**整片地面**材质替换为当前选中材质，2D 与右侧 3D 预览同步
+- [ ] 撤销/重做可还原/重做换材操作；清空可恢复进入编辑前状态
+- [ ] 保存后返回 3D 主场景，地台显示已保存材质；刷新页面后仍可从 IndexedDB 恢复
+- [ ] 关闭（未保存）弹出确认，确认后不修改原方案并返回上一页
+- [ ] 画布支持右键拖拽平移、滚轮缩放
+
+---
+
+## 12. 风险与 P2 预留
+
+| 项 | 说明 |
+|----|------|
+| 复杂多边形 UV | 凹多边形地台 UV 平铺可能拉伸；MVP 用 AABB 投影，P2 可优化 |
+| 性能 | 预览窗双 R3F；注意与主场景不要同时渲染同一 Canvas |
+| 地台凸出 | 图二「凸出 0」标签 P2 实现 |
+| 地台分块换材 | P2 支持局部区域不同材质 |
+| 从 2D 画户型进入地台 | P2 在房间属性增加「地台设计」入口 |
+
+---
+
+## 13. 附录
+
+### 13.1 进入 / 退出伪代码
+
+```typescript
+function enterPlatformDesignMode(roomId: string) {
+  const room = document.floorPlan?.rooms[roomId];
+  if (!room) return;
+  const presetId = room.floorMaterial?.presetId ?? DEFAULT_FLOOR_PRESET_ID;
+  set({
+    platformDesignMode: {
+      active: true,
+      roomId,
+      snapshotPresetId: presetId,
+      draftPresetId: presetId,
+      activePresetId: null,
+      canvasView: fitViewToRoom(roomId),
+    },
+  });
+  usePlatformHistoryStore.getState().clear();
+}
+
+function exitPlatformDesignMode({ save = false } = {}) {
+  const mode = get().platformDesignMode;
+  if (!mode) return;
+  if (save) {
+    useSceneStore.getState().updateRoomFloorMaterial(mode.roomId, {
+      presetId: mode.draftPresetId,
+    });
+  }
+  set({ platformDesignMode: null, selectedRoomId: null });
+}
+```
+
+### 13.2 SVG 画布骨架（对标 FloorPlanCanvas）
+
+```tsx
+// PlatformDesignCanvas.tsx — 与 FloorPlanCanvas 相同技术栈
+<div ref={containerRef} className="platform-design-canvas">
+  <svg
+    width={size.width}
+    height={size.height}
+    onPointerDown={handlePointerDown}
+    onPointerMove={handlePointerMove}
+    onPointerUp={handlePointerUp}
+    onPointerCancel={handlePointerCancel}
+    onContextMenu={(e) => e.preventDefault()}
+  >
+    {/* 棋盘格背景 */}
+    <RoomFloorFill2D polygon={floorPolygon} presetId={draftPresetId} view={view} />
+    <PlatformDimensionAnnotations polygon={floorPolygon} view={view} />
+  </svg>
+  {activePresetId && <FloorMaterialCursorGhost />}
+</div>
+```
+
+坐标转换与画户型完全一致：
+
+```typescript
+const point = screenToWorld(e.clientX, e.clientY, containerRef, view);
+const hit = pointInPolygon(point, floorPolygon);
+```
+
+### 13.3 地台区域命中检测
+
+```typescript
+function hitRoomFloorAtPoint(point: Vec2, polygon: Vec2[]): boolean {
+  return pointInPolygon(point, polygon);
+}
+```
+
+### 13.4 参考图 UI 元素映射
+
+| 参考图元素 | 实现组件 |
+|------------|----------|
+| 蓝色地台描边 | `RoomFloorPickLayer` Outline |
+| 「地台设计 >」 | `PlatformDesignButton` |
+| 左材质分类 | `PlatformMaterialPanel` |
+| 中间尺寸 13610 / 9370 | `PlatformDesignCanvas` 标注层 |
+| 「凸出 0」 | P2 占位 Label |
+| 光标下绿色材质块 | `FloorMaterialCursorGhost` |
+| 右上保存/关闭 | `PlatformDesignTopBar` |

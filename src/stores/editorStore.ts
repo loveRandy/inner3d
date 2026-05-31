@@ -1,11 +1,21 @@
 import { create } from 'zustand';
 import type { MaterialOverride, MaterialPresetId, MeshPartKey } from '@/types/scene';
 import type { FloorPlanTool, Vec2 } from '@/types/floorPlan';
-import { clampFloorPlanZoom } from '@/lib/floorPlan/canvasView';
+import {
+  clampFloorPlanZoom,
+  createDefaultViewState,
+  fitViewToPolygon,
+  type CanvasViewState,
+} from '@/lib/floorPlan/canvasView';
 import { isFloorPlanDrawingInProgress } from '@/lib/floorPlan/floorPlanToolState';
+import { getRoomFloorPolygon } from '@/lib/floorPlan/roomFloorPolygon';
 import { useSceneRefsStore } from '@/stores/sceneRefsStore';
 import { useSceneStore } from '@/stores/sceneStore';
+import { usePlatformHistoryStore } from '@/stores/platformHistoryStore';
 import { getAssetById } from '@/features/assets';
+import {
+  DEFAULT_FLOOR_PRESET_ID,
+} from '@/types/platformDesign';
 import {
   buildModelPartTree,
   findFirstMeshKey,
@@ -25,6 +35,15 @@ export interface MaterialModeState {
   partTree: ModelPartTreeNode;
 }
 
+export interface PlatformDesignModeState {
+  active: true;
+  roomId: string;
+  snapshotPresetId: string;
+  draftPresetId: string;
+  activePresetId: string | null;
+  canvasView: CanvasViewState;
+}
+
 interface EditorState {
   editorMode: EditorMode;
   floorPlanTool: FloorPlanTool;
@@ -40,6 +59,9 @@ interface EditorState {
   isTransformDragging: boolean;
   gizmoPointerActive: boolean;
   materialMode: MaterialModeState | null;
+  platformDesignMode: PlatformDesignModeState | null;
+  platformClearConfirmOpen: boolean;
+  platformCloseConfirmOpen: boolean;
   setEditorMode: (mode: EditorMode) => void;
   setFloorPlanTool: (tool: FloorPlanTool) => void;
   setWallDrawStart: (point: Vec2 | null) => void;
@@ -62,6 +84,15 @@ interface EditorState {
   applyDraftCustomMap: (dataUrl: string) => void;
   clearDraftOverride: (meshKey: MeshPartKey) => void;
   getDraftOverrides: () => Record<MeshPartKey, MaterialOverride>;
+  enterPlatformDesignMode: (roomId: string) => boolean;
+  exitPlatformDesignMode: (opts?: { save?: boolean }) => void;
+  setActiveFloorMaterialPreset: (presetId: string | null) => void;
+  setDraftFloorPresetId: (presetId: string) => void;
+  setPlatformCanvasView: (view: Partial<CanvasViewState>) => void;
+  markPlatformDesignSaved: () => void;
+  setPlatformClearConfirmOpen: (open: boolean) => void;
+  setPlatformCloseConfirmOpen: (open: boolean) => void;
+  hasPlatformDesignUnsavedChanges: () => boolean;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -79,6 +110,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isTransformDragging: false,
   gizmoPointerActive: false,
   materialMode: null,
+  platformDesignMode: null,
+  platformClearConfirmOpen: false,
+  platformCloseConfirmOpen: false,
 
   setEditorMode: (mode) => {
     set({
@@ -253,4 +287,103 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   getDraftOverrides: () => get().materialMode?.draftOverrides ?? {},
+
+  enterPlatformDesignMode: (roomId) => {
+    const floorPlan = useSceneStore.getState().document.floorPlan;
+    const room = floorPlan?.rooms[roomId];
+    if (!room || !floorPlan) return false;
+
+    const presetId = room.floorMaterial?.presetId ?? DEFAULT_FLOOR_PRESET_ID;
+    const polygon = getRoomFloorPolygon(floorPlan, room);
+    const fit = fitViewToPolygon(polygon);
+    const canvasView = {
+      ...createDefaultViewState(800, 600),
+      ...fit,
+    };
+
+    usePlatformHistoryStore.getState().clear();
+    set({
+      platformDesignMode: {
+        active: true,
+        roomId,
+        snapshotPresetId: presetId,
+        draftPresetId: presetId,
+        activePresetId: null,
+        canvasView,
+      },
+      materialMode: null,
+    });
+    return true;
+  },
+
+  exitPlatformDesignMode: ({ save = false } = {}) => {
+    const mode = get().platformDesignMode;
+    if (!mode) return;
+
+    if (save) {
+      useSceneStore.getState().updateRoomFloorMaterial(mode.roomId, {
+        presetId: mode.draftPresetId,
+      });
+    }
+
+    set({
+      platformDesignMode: null,
+      platformClearConfirmOpen: false,
+      platformCloseConfirmOpen: false,
+    });
+    useSceneStore.getState().setSelectedRoomId(null);
+    usePlatformHistoryStore.getState().clear();
+  },
+
+  setActiveFloorMaterialPreset: (presetId) => {
+    const mode = get().platformDesignMode;
+    if (!mode) return;
+    const next = mode.activePresetId === presetId ? null : presetId;
+    set({
+      platformDesignMode: { ...mode, activePresetId: next },
+    });
+  },
+
+  setDraftFloorPresetId: (presetId) => {
+    const mode = get().platformDesignMode;
+    if (!mode) return;
+    set({
+      platformDesignMode: { ...mode, draftPresetId: presetId },
+    });
+  },
+
+  setPlatformCanvasView: (view) => {
+    const mode = get().platformDesignMode;
+    if (!mode) return;
+    set({
+      platformDesignMode: {
+        ...mode,
+        canvasView: {
+          ...mode.canvasView,
+          ...view,
+          zoom: view.zoom !== undefined ? clampFloorPlanZoom(view.zoom) : mode.canvasView.zoom,
+        },
+      },
+    });
+  },
+
+  markPlatformDesignSaved: () => {
+    const mode = get().platformDesignMode;
+    if (!mode) return;
+    set({
+      platformDesignMode: {
+        ...mode,
+        snapshotPresetId: mode.draftPresetId,
+      },
+    });
+  },
+
+  setPlatformClearConfirmOpen: (open) => set({ platformClearConfirmOpen: open }),
+  setPlatformCloseConfirmOpen: (open) => set({ platformCloseConfirmOpen: open }),
+
+  hasPlatformDesignUnsavedChanges: () => {
+    const mode = get().platformDesignMode;
+    if (!mode) return false;
+    return mode.draftPresetId !== mode.snapshotPresetId;
+  },
 }));

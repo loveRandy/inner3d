@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import type { SceneDocument, SceneEntity, Transform } from '@/types/scene';
 import { createEmptyDocument } from '@/types/scene';
 import type { FloorPlanSelection } from '@/types/floorPlan';
+import type { RoomFloorMaterial } from '@/types/platformDesign';
 import { normalizeSceneDocument } from '@/lib/scene/documentUtils';
 import { buildGroupFromSelection, buildUngroup } from '@/lib/commands/sceneCommands';
 import { getWorldTransform } from '@/lib/transform/worldTransform';
@@ -10,6 +11,7 @@ import { getWorldTransform } from '@/lib/transform/worldTransform';
 interface SceneState {
   document: SceneDocument;
   selectedIds: string[];
+  selectedRoomId: string | null;
   floorPlanSelection: FloorPlanSelection[];
   placementAssetId: string | null;
   hoveredEntityId: string | null;
@@ -19,12 +21,15 @@ interface SceneState {
   setHoveredEntity: (entityId: string | null) => void;
   setHoveredFloorPlan: (item: { kind: FloorPlanSelection['kind']; id: string } | null) => void;
   setSelection: (ids: string[]) => void;
+  clearEntitySelection: () => void;
+  setSelectedRoomId: (roomId: string | null) => void;
   setFloorPlanSelection: (items: FloorPlanSelection[]) => void;
   toggleSelection: (id: string, additive: boolean) => void;
   loadDocument: (doc: SceneDocument) => void;
   removeEntitiesByIds: (ids: string[]) => void;
   groupEntities: (selectedIds: string[]) => void;
   ungroupEntity: (groupId: string) => void;
+  updateRoomFloorMaterial: (roomId: string, material: RoomFloorMaterial) => void;
   getEntityWorldTransform: (id: string) => Transform;
 }
 
@@ -44,6 +49,7 @@ export const useSceneStore = create<SceneState>()(
   immer((set, get) => ({
     document: createEmptyDocument(),
     selectedIds: [],
+    selectedRoomId: null,
     floorPlanSelection: [],
     placementAssetId: null,
     hoveredEntityId: null,
@@ -62,17 +68,27 @@ export const useSceneStore = create<SceneState>()(
     },
 
     setSelection: (ids) => {
-      set({ selectedIds: ids, floorPlanSelection: [] });
+      set({ selectedIds: ids, floorPlanSelection: [], selectedRoomId: null });
+    },
+
+    clearEntitySelection: () => {
+      set({ selectedIds: [], hoveredEntityId: null });
+    },
+
+    setSelectedRoomId: (roomId) => {
+      set({ selectedRoomId: roomId, selectedIds: [], floorPlanSelection: [] });
     },
 
     setFloorPlanSelection: (items) => {
-      set({ floorPlanSelection: items, selectedIds: [] });
+      set({ floorPlanSelection: items, selectedIds: [], selectedRoomId: null });
     },
 
     toggleSelection: (id, additive) => {
       set((state) => {
         if (!additive) {
           state.selectedIds = [id];
+          state.selectedRoomId = null;
+          state.floorPlanSelection = [];
           return;
         }
         if (state.selectedIds.includes(id)) {
@@ -87,6 +103,7 @@ export const useSceneStore = create<SceneState>()(
       set({
         document: normalizeSceneDocument(doc),
         selectedIds: [],
+        selectedRoomId: null,
         floorPlanSelection: [],
         placementAssetId: null,
         hoveredEntityId: null,
@@ -146,6 +163,15 @@ export const useSceneStore = create<SceneState>()(
 
     getEntityWorldTransform: (id) => {
       return getWorldTransform(id, get().document.entities);
+    },
+
+    updateRoomFloorMaterial: (roomId, material) => {
+      set((state) => {
+        const room = state.document.floorPlan?.rooms[roomId];
+        if (!room || !state.document.floorPlan) return;
+        room.floorMaterial = { ...material };
+        state.document.updatedAt = Date.now();
+      });
     },
   })),
 );

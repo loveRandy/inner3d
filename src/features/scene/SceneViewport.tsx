@@ -6,7 +6,8 @@ import { useEditorStore } from '@/stores/editorStore';
 export function SceneViewport() {
   const placementAssetId = useSceneStore((s) => s.placementAssetId);
   const setHoveredEntity = useSceneStore((s) => s.setHoveredEntity);
-  const setSelection = useSceneStore((s) => s.setSelection);
+  const clearEntitySelection = useSceneStore((s) => s.clearEntitySelection);
+  const setSelectedRoomId = useSceneStore((s) => s.setSelectedRoomId);
 
   const handlePointerMissed = () => {
     setHoveredEntity(null);
@@ -15,7 +16,8 @@ export function SceneViewport() {
     if (isTransformDragging || gizmoPointerActive) return;
     if (placementAssetId) return;
 
-    setSelection([]);
+    clearEntitySelection();
+    setSelectedRoomId(null);
   };
 
   return (

@@ -9,6 +9,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     base,
+    server: {
+      port: 8888,
+    },
     plugins: [react()],
     resolve: {
       alias: {

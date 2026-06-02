@@ -577,6 +577,93 @@ button {
   }
 }
 
+.floor-plan-sheet {
+  flex-shrink: 0;
+  min-width: 0;
+  border-bottom: 1px solid @color-border;
+  background: @color-panel;
+
+  &__canvas {
+    width: 100%;
+    height: @height-floor-plan-sheet;
+    overflow: hidden;
+    background: #f8fafc;
+  }
+
+  &__svg {
+    display: block;
+    cursor: default;
+
+    &--panning {
+      cursor: grabbing;
+    }
+  }
+
+  &__wall {
+    stroke-linejoin: round;
+  }
+
+  &__room-label {
+    fill: #334155;
+    font-size: 11px;
+    font-weight: 600;
+    user-select: none;
+    paint-order: stroke;
+    stroke: rgb(255 255 255 / 90%);
+    stroke-width: 3px;
+  }
+
+  &__room-area {
+    fill: #64748b;
+    font-size: 10px;
+    user-select: none;
+  }
+
+  &__models {
+    .floor-plan-canvas__model-symbol {
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .floor-plan-canvas__model-label {
+      font-size: 9px;
+    }
+  }
+
+  &__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: @height-floor-plan-sheet;
+    padding: 12px;
+    background: @color-surface;
+    text-align: center;
+  }
+
+  &__empty-text {
+    margin: 0;
+    font-size: @font-size-sm;
+    color: @color-text-muted;
+  }
+
+  &__empty-btn {
+    padding: 6px 14px;
+    border: 1px solid @color-border;
+    border-radius: @radius-md;
+    background: @color-panel;
+    color: @color-accent;
+    font-size: @font-size-sm;
+    cursor: pointer;
+
+    &:hover {
+      border-color: @color-accent;
+      background: @color-accent-soft;
+    }
+  }
+}
+
 .property-panel {
   display: flex;
   flex-direction: column;

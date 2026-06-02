@@ -2,6 +2,7 @@ import { TopBar } from './TopBar';
 import { ModelPanel } from './ModelPanel';
 import { PropertyPanel } from './PropertyPanel';
 import { TopView } from './TopView';
+import { FloorPlanSheetPanel } from './FloorPlanSheetPanel';
 import { ConfirmDialog } from './ConfirmDialog';
 import { FloorPlanToolPanel } from './FloorPlanToolPanel';
 import { FloorPlanCanvas } from './FloorPlanCanvas';
@@ -43,6 +44,7 @@ export function EditorLayout() {
               ) : (
                 <>
                   <TopView />
+                  <FloorPlanSheetPanel />
                   <PropertyPanel />
                 </>
               )}

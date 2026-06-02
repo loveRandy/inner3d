@@ -1,4 +1,4 @@
-import type { Vec2 } from '@/types/floorPlan';
+import type { FloorPlan, Vec2 } from '@/types/floorPlan';
 
 export interface CanvasViewState {
   width: number;
@@ -177,4 +177,22 @@ export function fitViewToPolygon(
     zoom: 1,
     worldSpan: span,
   };
+}
+
+/** 将视图 fit 到户型全部墙体范围（户型平面图面板用） */
+export function fitViewToFloorPlanBounds(
+  floorPlan: FloorPlan,
+  paddingRatio = 0.12,
+): Pick<CanvasViewState, 'panX' | 'panZ' | 'zoom' | 'worldSpan'> {
+  const points: Vec2[] = [];
+  for (const id of floorPlan.wallIds) {
+    const wall = floorPlan.walls[id];
+    if (wall) {
+      points.push(wall.start, wall.end);
+    }
+  }
+  if (points.length === 0) {
+    return { panX: 0, panZ: 0, zoom: 1, worldSpan: 16 };
+  }
+  return fitViewToPolygon(points, paddingRatio);
 }

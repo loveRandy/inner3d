@@ -44,6 +44,11 @@ export interface PlatformDesignModeState {
   canvasView: CanvasViewState;
 }
 
+export type FloorPlanSheetViewState = Pick<
+  CanvasViewState,
+  'width' | 'height' | 'zoom' | 'panX' | 'panZ' | 'worldSpan'
+>;
+
 interface EditorState {
   editorMode: EditorMode;
   floorPlanTool: FloorPlanTool;
@@ -62,6 +67,7 @@ interface EditorState {
   platformDesignMode: PlatformDesignModeState | null;
   platformClearConfirmOpen: boolean;
   platformCloseConfirmOpen: boolean;
+  floorPlanSheetView: FloorPlanSheetViewState | null;
   setEditorMode: (mode: EditorMode) => void;
   setFloorPlanTool: (tool: FloorPlanTool) => void;
   setWallDrawStart: (point: Vec2 | null) => void;
@@ -93,6 +99,8 @@ interface EditorState {
   setPlatformClearConfirmOpen: (open: boolean) => void;
   setPlatformCloseConfirmOpen: (open: boolean) => void;
   hasPlatformDesignUnsavedChanges: () => boolean;
+  setFloorPlanSheetView: (view: Partial<FloorPlanSheetViewState>) => void;
+  resetFloorPlanSheetView: () => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -113,6 +121,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   platformDesignMode: null,
   platformClearConfirmOpen: false,
   platformCloseConfirmOpen: false,
+  floorPlanSheetView: null,
 
   setEditorMode: (mode) => {
     set({
@@ -386,4 +395,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!mode) return false;
     return mode.draftPresetId !== mode.snapshotPresetId;
   },
+
+  setFloorPlanSheetView: (view) => {
+    const prev = get().floorPlanSheetView ?? createDefaultViewState(400, 200);
+    set({
+      floorPlanSheetView: {
+        ...prev,
+        ...view,
+        zoom: view.zoom !== undefined ? clampFloorPlanZoom(view.zoom) : prev.zoom,
+      },
+    });
+  },
+
+  resetFloorPlanSheetView: () => set({ floorPlanSheetView: null }),
 }));

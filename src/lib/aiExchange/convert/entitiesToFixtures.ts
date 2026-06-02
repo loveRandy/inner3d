@@ -37,7 +37,11 @@ export function entitiesToFixtures(
     const entity = entities[entityId];
     if (!entity || entity.type !== 'model') continue;
 
-    const corners = getEntityFootprintCorners(entityId, entities, footprints);
+    const corners = getEntityFootprintCorners(
+      entityId,
+      entities,
+      footprints as Record<string, ModelFootprint>,
+    );
     const center =
       corners.length >= 3
         ? footprintCenter(corners)

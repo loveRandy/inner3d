@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "semantic-floor-plan/1",
+  "meta": {
+    "title": "四层娱乐层",
+    "floorLevelLabel": "下三楼",
+    "source": "manual",
+    "locale": "zh-CN"
+  },
+  "defaults": {
+    "wallThickness": 0.24,
+    "wallHeight": 2.8,
+    "wallKind": "nonBearing"
+  },
+  "coordinateSystem": {
+    "unit": "meter"
+  },
+  "walls": [],
+  "openings": [],
+  "rooms": [
+    {
+      "key": "lounge",
+      "roomType": "lounge",
+      "nameZh": "娱乐室",
+      "nameEn": "LOUNGE",
+      "polygon": []
+    },
+    {
+      "key": "corridor",
+      "roomType": "corridor",
+      "nameZh": "过道",
+      "polygon": []
+    },
+    {
+      "key": "balcony-left",
+      "roomType": "balcony",
+      "nameZh": "阳台",
+      "polygon": []
+    },
+    {
+      "key": "balcony-right",
+      "roomType": "balcony",
+      "nameZh": "阳台",
+      "polygon": []
+    },
+    {
+      "key": "closet",
+      "roomType": "closet",
+      "nameEn": "CLOSET",
+      "nameZh": "储藏间",
+      "polygon": []
+    }
+  ],
+  "fixtures": [
+    {
+      "category": "table",
+      "roomKey": "lounge",
+      "position": { "x": 0, "z": 0 },
+      "size": { "width": 1.2, "depth": 1.2 }
+    },
+    {
+      "category": "chair",
+      "roomKey": "lounge",
+      "count": 4,
+      "position": { "x": 0, "z": 0 }
+    },
+    {
+      "category": "cabinet",
+      "roomKey": "lounge",
+      "position": { "x": 0, "z": 0 }
+    },
+    {
+      "category": "storage_rack",
+      "roomKey": "closet",
+      "position": { "x": 0, "z": 0 }
+    },
+    {
+      "category": "ac_unit",
+      "roomKey": "balcony-right",
+      "label": "A/C",
+      "position": { "x": 0, "z": 0 }
+    }
+  ],
+  "annotations": [
+    {
+      "type": "arrow",
+      "content": "下三楼",
+      "geometry": [{ "x": 0, "z": 0 }, { "x": 0, "z": -1 }]
+    }
+  ]
+}

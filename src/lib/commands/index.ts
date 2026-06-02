@@ -20,4 +20,5 @@ export {
   createUpdateRoomCommand,
   createUpdateWallCommand,
   createUpdateWallEndpointCommand,
+  createImportSemanticFloorPlanCommand,
 } from './floorPlanCommands';

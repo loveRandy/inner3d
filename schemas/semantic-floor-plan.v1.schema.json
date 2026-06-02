@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://inner3d.local/schemas/semantic-floor-plan.v1.schema.json",
+  "title": "SemanticFloorPlanV1",
+  "description": "3D 场景编辑器 — 语义化户型 AI 交换格式",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "meta",
+    "defaults",
+    "coordinateSystem",
+    "walls",
+    "openings",
+    "rooms"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "semantic-floor-plan/1" },
+    "meta": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "title": { "type": "string" },
+        "floorLevel": { "type": "string" },
+        "floorLevelLabel": { "type": "string" },
+        "source": {
+          "enum": ["manual", "ai", "cad_import", "editor_export"]
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "locale": { "enum": ["zh-CN", "en-US"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "required": ["wallThickness", "wallHeight", "wallKind"],
+      "properties": {
+        "wallThickness": { "type": "number", "exclusiveMinimum": 0 },
+        "wallHeight": { "type": "number", "exclusiveMinimum": 0 },
+        "wallKind": { "enum": ["bearing", "nonBearing"] }
+      }
+    },
+    "coordinateSystem": {
+      "type": "object",
+      "required": ["unit"],
+      "properties": {
+        "unit": { "const": "meter" },
+        "imageCalibration": {
+          "type": "object",
+          "required": ["imageWidth", "imageHeight", "referenceLinePx", "referenceLengthM"],
+          "properties": {
+            "imageWidth": { "type": "number", "exclusiveMinimum": 0 },
+            "imageHeight": { "type": "number", "exclusiveMinimum": 0 },
+            "referenceLinePx": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": { "type": "number" }
+              }
+            },
+            "referenceLengthM": { "type": "number", "exclusiveMinimum": 0 },
+            "rotationRad": { "type": "number" },
+            "originWorld": { "$ref": "#/definitions/vec2" }
+          }
+        }
+      }
+    },
+    "walls": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/wall" }
+    },
+    "openings": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/opening" }
+    },
+    "rooms": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/room" }
+    },
+    "fixtures": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/fixture" }
+    },
+    "annotations": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/annotation" }
+    }
+  },
+  "definitions": {
+    "vec2": {
+      "type": "object",
+      "required": ["x", "z"],
+      "properties": {
+        "x": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "wall": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "$ref": "#/definitions/vec2" },
+        "end": { "$ref": "#/definitions/vec2" },
+        "thickness": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "kind": { "enum": ["bearing", "nonBearing"] },
+        "isExterior": { "type": "boolean" }
+      }
+    },
+    "opening": {
+      "type": "object",
+      "required": ["type", "wallIndex", "offset", "width"],
+      "properties": {
+        "type": { "enum": ["door", "window", "opening"] },
+        "wallIndex": { "type": "integer", "minimum": 0 },
+        "offset": { "type": "number", "minimum": 0 },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "sillHeight": { "type": "number", "minimum": 0 },
+        "flip": { "type": "boolean" },
+        "doorStyle": { "enum": ["swing", "sliding", "unknown"] }
+      }
+    },
+    "room": {
+      "type": "object",
+      "required": ["key", "roomType", "polygon"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "roomType": {
+          "enum": [
+            "living_room",
+            "lounge",
+            "bedroom",
+            "kitchen",
+            "dining",
+            "bathroom",
+            "corridor",
+            "balcony",
+            "closet",
+            "stairwell",
+            "utility",
+            "garage",
+            "office",
+            "unknown"
+          ]
+        },
+        "name": { "type": "string" },
+        "nameZh": { "type": "string" },
+        "nameEn": { "type": "string" },
+        "polygon": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/vec2" }
+        },
+        "area": { "type": "number", "minimum": 0 },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text", "position"],
+            "properties": {
+              "text": { "type": "string" },
+              "language": { "enum": ["zh", "en"] },
+              "position": { "$ref": "#/definitions/vec2" }
+            }
+          }
+        }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "required": ["category", "position"],
+      "properties": {
+        "category": {
+          "enum": [
+            "table",
+            "chair",
+            "sofa",
+            "bed",
+            "cabinet",
+            "storage_rack",
+            "ac_unit",
+            "stair",
+            "sink",
+            "toilet",
+            "bathtub",
+            "appliance",
+            "unknown"
+          ]
+        },
+        "roomKey": { "type": "string" },
+        "position": { "$ref": "#/definitions/vec2" },
+        "rotationDeg": { "type": "number" },
+        "size": {
+          "type": "object",
+          "required": ["width", "depth"],
+          "properties": {
+            "width": { "type": "number", "exclusiveMinimum": 0 },
+            "depth": { "type": "number", "exclusiveMinimum": 0 },
+            "height": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "count": { "type": "number", "minimum": 1 },
+        "label": { "type": "string" }
+      }
+    },
+    "annotation": {
+      "type": "object",
+      "required": ["type", "geometry"],
+      "properties": {
+        "type": { "enum": ["text", "arrow", "dimension", "custom"] },
+        "content": { "type": "string" },
+        "geometry": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/vec2" }
+        }
+      }
+    }
+  }
+}

@@ -5,10 +5,14 @@ import { useSceneStore } from '@/stores/sceneStore';
 import { saveScene, downloadSceneFile, readSceneFile } from '@/lib/persistence';
 import {
   createGroupCommand,
+  createImportSemanticFloorPlanCommand,
   createUngroupCommand,
   createUpdateMaterialOverridesCommand,
 } from '@/lib/commands';
+import { exportSemanticFromDocument } from '@/lib/aiExchange/export/exportSemanticFromDocument';
+import { downloadSemanticFloorPlan, readSemanticFloorPlanFile } from '@/lib/aiExchange/semanticFile';
 import { countEntities } from '@/lib/scene/documentUtils';
+import { useModelFootprintStore } from '@/stores/modelFootprintStore';
 
 export function TopBar() {
   const canUndo = useHistoryStore((s) => s.canUndo);
@@ -30,6 +34,8 @@ export function TopBar() {
   const selectedIds = useSceneStore((s) => s.selectedIds);
   const entities = useSceneStore((s) => s.document.entities);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const semanticImportInputRef = useRef<HTMLInputElement>(null);
+  const footprints = useModelFootprintStore((s) => s.footprints);
 
   const selectedEntity = selectedIds.length === 1 ? entities[selectedIds[0]] : null;
   const canGroup = selectedIds.filter((id) => document.rootIds.includes(id)).length >= 2;
@@ -53,8 +59,18 @@ export function TopBar() {
     showStatus('已导出场景文件');
   };
 
+  const handleExportSemantic = () => {
+    const plan = exportSemanticFromDocument(document, footprints);
+    downloadSemanticFloorPlan(plan, document.settings.name);
+    showStatus('已导出语义户型 JSON');
+  };
+
   const handleImportClick = () => {
     importInputRef.current?.click();
+  };
+
+  const handleSemanticImportClick = () => {
+    semanticImportInputRef.current?.click();
   };
 
   const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,6 +90,28 @@ export function TopBar() {
       clearHistory();
       await saveScene(doc);
       showStatus(`已导入「${doc.settings.name}」`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '导入失败';
+      showStatus(message, true);
+    }
+  };
+
+  const handleSemanticImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const hasWalls = (document.floorPlan?.wallIds.length ?? 0) > 0;
+    if (hasWalls) {
+      const confirmed = window.confirm('导入语义户型将替换当前墙体与房间数据，是否继续？');
+      if (!confirmed) return;
+    }
+
+    try {
+      const plan = await readSemanticFloorPlanFile(file);
+      execute(createImportSemanticFloorPlanCommand(plan));
+      await saveScene(useSceneStore.getState().document);
+      showStatus('已导入语义户型（可撤销）');
     } catch (error) {
       const message = error instanceof Error ? error.message : '导入失败';
       showStatus(message, true);
@@ -156,10 +194,16 @@ export function TopBar() {
           保存
         </button>
         <button type="button" onClick={handleExport}>
-          导出
+          导出场景
+        </button>
+        <button type="button" onClick={handleExportSemantic} title="导出 AI 语义化户型 JSON">
+          导出语义
         </button>
         <button type="button" onClick={handleImportClick}>
-          导入
+          导入场景
+        </button>
+        <button type="button" onClick={handleSemanticImportClick} title="导入 .sfp.json 语义户型">
+          导入语义
         </button>
         <input
           ref={importInputRef}
@@ -167,6 +211,13 @@ export function TopBar() {
           accept=".json,application/json"
           className="top-bar__file-input"
           onChange={handleImportFile}
+        />
+        <input
+          ref={semanticImportInputRef}
+          type="file"
+          accept=".json,.sfp.json,application/json"
+          className="top-bar__file-input"
+          onChange={handleSemanticImportFile}
         />
         <button type="button" disabled={!canUndo} onClick={undo}>
           撤销

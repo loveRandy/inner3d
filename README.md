@@ -404,6 +404,7 @@ editorMode === 'furniture' → ModelPanel + SceneViewport + TopView
 
 ```
 1. src/types/scene.ts + floorPlan.ts     ← 理解数据模型
+   src/lib/aiExchange/                   ← AI 语义交换类型与校验
 2. src/stores/sceneStore.ts + editorStore.ts  ← 理解状态边界
 3. src/app/layout/EditorLayout.tsx       ← 理解 UI 编排
 4. src/lib/commands/sceneCommands.ts     ← 理解一次操作的完整链路
@@ -450,6 +451,8 @@ editorMode === 'furniture' → ModelPanel + SceneViewport + TopView
 | [3d场景编辑器mvp技术文档](./3d场景编辑器mvp技术文档) | P0：家具编辑、命令栈、持久化 |
 | [3d场景编辑器-画户型P1技术文档](./3d场景编辑器-画户型P1技术文档) | P1：画墙、门窗、房间检测 |
 | [3d场景编辑器-地台设计MVP技术文档](./3d场景编辑器-地台设计MVP技术文档) | 地台材质编辑流程 |
+| [3d场景编辑器-户型平面图与AI生成MVP技术文档](./3d场景编辑器-户型平面图与AI生成MVP技术文档.md) | 户型平面图面板、AI 链路概览 |
+| [3d场景编辑器-AI数据交换格式设计文档](./3d场景编辑器-AI数据交换格式设计文档.md) | 语义化导入导出 Schema |
 
 ---
 

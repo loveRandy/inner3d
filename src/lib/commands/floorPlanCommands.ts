@@ -18,6 +18,8 @@ import {
   removeFloorPlanSelection,
   updateWallEndpointInPlan,
 } from '@/lib/floorPlan/mutations';
+import { applySemanticFloorPlanToFloorPlan } from '@/lib/aiExchange/import/applySemanticFloorPlan';
+import type { SemanticFloorPlanV1 } from '@/lib/aiExchange/types/semanticFloorPlan';
 import { createOpeningOnWall } from '@/lib/floorPlan/openingPlacement';
 import { useSceneStore } from '@/stores/sceneStore';
 
@@ -240,6 +242,32 @@ export function createUpdateFloorPlanSettingsCommand(
       });
       useSceneStore.setState({ floorPlanSelection: before.floorPlanSelection });
     },
+  };
+}
+
+export function createImportSemanticFloorPlanCommand(semantic: SemanticFloorPlanV1): Command {
+  let before: DocumentSnapshot;
+
+  return {
+    name: 'importSemanticFloorPlan',
+    execute: () => {
+      before = getCurrentSnapshot();
+      const current = useSceneStore.getState().document.floorPlan;
+      const { floorPlan, warnings } = applySemanticFloorPlanToFloorPlan(semantic, current);
+
+      if (warnings.length > 0) {
+        console.warn('[importSemanticFloorPlan]', warnings.join('; '));
+      }
+
+      useSceneStore.setState((state) => {
+        state.document.floorPlan = floorPlan;
+        state.document.updatedAt = Date.now();
+        state.floorPlanSelection = [];
+        state.selectedRoomId = null;
+        state.selectedIds = [];
+      });
+    },
+    undo: () => restoreSnapshot(before),
   };
 }
 

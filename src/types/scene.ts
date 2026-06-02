@@ -63,11 +63,28 @@ export interface SceneSettings {
   ambientIntensity: number;
 }
 
+/** 参考平面户型图（扫描/截图），用于 AI 对照与训练样本 */
+export interface FloorPlanReference {
+  imageRef: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  transform?: {
+    scale: number;
+    offsetX: number;
+    offsetZ: number;
+    rotationRad: number;
+  };
+  displayMode?: 'off' | 'underlay';
+}
+
 export interface SceneDocument {
   version: 1 | 2;
   id: string;
   settings: SceneSettings;
   floorPlan?: FloorPlan;
+  /** 参考户型图元数据；图像本体建议 IndexedDB 或侧车文件 */
+  floorPlanReference?: FloorPlanReference;
   entities: Record<string, SceneEntity>;
   rootIds: string[];
   updatedAt: number;

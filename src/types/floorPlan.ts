@@ -1,4 +1,7 @@
 import { randomUUID } from '@/lib/id/randomUUID';
+import type { RoomType } from '@/lib/aiExchange/types/semanticFloorPlan';
+
+export type { RoomType };
 
 export type WallAlign = 'center' | 'inner' | 'outer';
 export type WallKind = 'bearing' | 'nonBearing';
@@ -43,6 +46,8 @@ export interface Room {
   wallLoop: string[];
   area: number;
   centroid: Vec2;
+  /** 语义房间类型（AI 交换 / 导入导出）；可选 */
+  roomType?: RoomType;
   /** 地台材质；undefined 表示使用全局默认 */
   floorMaterial?: import('@/types/platformDesign').RoomFloorMaterial;
 }
